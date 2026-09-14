@@ -40,7 +40,7 @@ export default function Sidebar({ onSelectUser }: { onSelectUser: (user: any) =>
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-white/10">
+      <div className="p-4 border-b border-white/10 bg-white/5">
         <div className="relative">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-text-secondary">
             <Search size={18} />
@@ -50,7 +50,7 @@ export default function Sidebar({ onSelectUser }: { onSelectUser: (user: any) =>
             placeholder="Search username..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-surface/50 border border-white/10 rounded-xl focus:outline-none focus:border-primary text-text placeholder-text-secondary transition-colors"
+            className="w-full pl-10 pr-4 py-3 bg-black/20 border border-white/20 rounded-xl focus:outline-none focus:border-primary text-text placeholder-white/60 transition-colors shadow-inner"
           />
         </div>
       </div>
@@ -65,9 +65,9 @@ export default function Sidebar({ onSelectUser }: { onSelectUser: (user: any) =>
           <button 
             key={u.uid}
             onClick={() => onSelectUser(u)}
-            className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-colors text-left"
+            className="w-full flex items-center gap-3 p-3 hover:bg-white/10 rounded-xl transition-colors text-left"
           >
-            <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
+            <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden border border-white/10">
               {u.photoURL ? (
                 <img src={u.photoURL} alt={u.name} className="w-full h-full object-cover" />
               ) : (
@@ -84,7 +84,7 @@ export default function Sidebar({ onSelectUser }: { onSelectUser: (user: any) =>
         {!searchQuery && (
           <div className="h-full flex flex-col items-center justify-center text-text-secondary opacity-50 p-4 text-center space-y-2">
             <UserPlus size={32} />
-            <p>Search for a username to start chatting!</p>
+            <p>Search for a username to view profile and chat!</p>
           </div>
         )}
       </div>
