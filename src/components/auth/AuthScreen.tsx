@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { Mail, Lock, User, AtSign, Calendar } from 'lucide-react';
+import { Lock, User, AtSign, Calendar } from 'lucide-react';
 
 export default function AuthScreen() {
   const [isLogin, setIsLogin] = useState(true);
