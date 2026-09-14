@@ -3,12 +3,13 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "dummy_api_key",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAwDA6WANr0WU7NaMXE1uhDCDwmEkHX-E8",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "chatwave-afc45.firebaseapp.com",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "chatwave-afc45",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "chatwave-afc45.appspot.com",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "chatwave-afc45.firebasestorage.app",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "348081858888",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:348081858888:web:dummy"
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:348081858888:web:acefbfbe705c3ee2ec2b7d",
+  measurementId: "G-XCPQ63243W"
 };
 
 const app = initializeApp(firebaseConfig);
