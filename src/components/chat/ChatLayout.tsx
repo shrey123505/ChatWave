@@ -34,8 +34,8 @@ export default function ChatLayout() {
     <div className="flex h-screen bg-background overflow-hidden text-text">
       <Toaster position="top-center" />
       
-      {/* Left Panel */}
-      <div className="w-80 border-r border-white/10 flex flex-col bg-surface/50 backdrop-blur-md">
+      {/* Left Panel (Hidden on mobile if chat is active) */}
+      <div className={\`\${activeChatUser ? 'hidden md:flex' : 'flex'} w-full md:w-80 border-r border-white/10 flex-col bg-surface/50 backdrop-blur-md transition-all\`}>
         <div className="p-4 border-b border-white/10 flex justify-between items-center">
           <h2 className="text-xl font-bold text-primary flex items-center gap-2">
             <MessageSquare size={24} /> ChatWave
@@ -60,8 +60,19 @@ export default function ChatLayout() {
         <Sidebar onSelectUser={(u) => setActiveChatUser(u)} />
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-background/50">
+      {/* Main Chat Area (Hidden on mobile if NO chat is active) */}
+      <div className={\`\${!activeChatUser ? 'hidden md:flex' : 'flex'} flex-1 flex-col bg-background/50 relative transition-all\`}>
+        
+        {/* Mobile Back Button (Only shows when chat is active on small screens) */}
+        {activeChatUser && (
+          <div className="md:hidden p-4 border-b border-white/10 flex items-center gap-2 bg-surface/50">
+            <button onClick={() => setActiveChatUser(null)} className="text-primary font-medium hover:underline">
+              ← Back
+            </button>
+            <span className="font-bold ml-2">{activeChatUser.name}</span>
+          </div>
+        )}
+
         {activeChatUser ? (
           <div className="flex-1 flex items-center justify-center flex-col text-text-secondary">
              <div className="w-20 h-20 rounded-full overflow-hidden bg-primary/20 mb-4">
