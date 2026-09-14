@@ -19,7 +19,7 @@ export default function AuthScreen() {
     setLoading(true);
     
     try {
-      const authEmail = email.includes('@') ? email : \`\${email}@chatwave.app\`;
+      const authEmail = email.includes('@') ? email : `${email}@chatwave.app`;
       
       if (isLogin) {
         await signInWithEmailAndPassword(auth, authEmail, password);
