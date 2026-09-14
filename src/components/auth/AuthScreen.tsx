@@ -19,16 +19,18 @@ export default function AuthScreen() {
     setLoading(true);
     
     try {
+      const authEmail = email.includes('@') ? email : \`\${email}@chatwave.app\`;
+      
       if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
+        await signInWithEmailAndPassword(auth, authEmail, password);
       } else {
-        const res = await createUserWithEmailAndPassword(auth, email, password);
+        const res = await createUserWithEmailAndPassword(auth, authEmail, password);
         await updateProfile(res.user, { displayName: name });
         await setDoc(doc(db, 'users', res.user.uid), {
           uid: res.user.uid,
           name,
           age,
-          email,
+          username: email,
           createdAt: new Date().toISOString()
         });
       }
@@ -75,14 +77,9 @@ export default function AuthScreen() {
 
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-text-secondary">
-              <Mail size={18} />
+              <AtSign size={18} />
             </div>
-            <input type="email" placeholder="Email or Temporary Mail" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full pl-10 pr-4 py-3 bg-surface border border-white/10 rounded-xl focus:outline-none focus:border-primary text-text placeholder-text-secondary transition-colors" />
-            {!isLogin && (
-               <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-text-secondary" title="Temporary mail allowed">
-                 <AtSign size={18} className="text-primary opacity-70" />
-               </div>
-            )}
+            <input type="text" placeholder="Username (e.g. shrey_11)" value={email} onChange={(e) => setEmail(e.target.value.replace(/\\s+/g, '').toLowerCase())} required className="w-full pl-10 pr-4 py-3 bg-surface border border-white/10 rounded-xl focus:outline-none focus:border-primary text-text placeholder-text-secondary transition-colors" />
           </div>
 
           <div className="relative">
