@@ -47,6 +47,30 @@ export default function CallModal({
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<any>(null);
+  const isEndingRef = useRef<boolean>(false);
+
+  const endCall = async () => {
+    if (isEndingRef.current) return;
+    isEndingRef.current = true;
+
+    toast("Call ended", { id: 'call-status-toast' });
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    try {
+      await updateDoc(doc(db, 'calls', callId), {
+        status: 'ended',
+        endedAt: serverTimestamp()
+      });
+    } catch {}
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+    }
+    onEndCall();
+  };
 
   useEffect(() => {
     let pc: RTCPeerConnection;
@@ -54,7 +78,6 @@ export default function CallModal({
 
     const startCall = async () => {
       try {
-        // 1. Get User Media (Camera / Microphone)
         localStream = await navigator.mediaDevices.getUserMedia({
           audio: true,
           video: callType === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false
@@ -65,16 +88,13 @@ export default function CallModal({
           localVideoRef.current.srcObject = localStream;
         }
 
-        // 2. Initialize RTCPeerConnection
         pc = new RTCPeerConnection(ICE_SERVERS);
         peerConnectionRef.current = pc;
 
-        // Add local tracks to PeerConnection
         localStream.getTracks().forEach((track) => {
           pc.addTrack(track, localStream);
         });
 
-        // 3. Handle Incoming Remote Tracks
         pc.ontrack = (event) => {
           if (remoteVideoRef.current && event.streams[0]) {
             remoteVideoRef.current.srcObject = event.streams[0];
@@ -89,23 +109,18 @@ export default function CallModal({
         };
 
         const callDocRef = doc(db, 'calls', callId);
-
-        // 4. Candidate Exchange Collection References
         const callerCandidatesCol = collection(db, 'calls', callId, 'callerCandidates');
         const receiverCandidatesCol = collection(db, 'calls', callId, 'receiverCandidates');
 
-        // ICE Candidates sent to Firestore
         pc.onicecandidate = (event) => {
-          if (event.candidate) {
+          if (event.candidate && !isEndingRef.current) {
             const candidateData = event.candidate.toJSON();
             const targetCol = isCaller ? callerCandidatesCol : receiverCandidatesCol;
             addDoc(targetCol, candidateData).catch(() => {});
           }
         };
 
-        // 5. Caller vs Receiver WebRTC Signaling Flow
         if (isCaller) {
-          // Create Offer
           const offerDesc = await pc.createOffer();
           await pc.setLocalDescription(offerDesc);
 
@@ -114,7 +129,6 @@ export default function CallModal({
             status: 'calling'
           });
 
-          // Listen for Answer
           const unsubCall = onSnapshot(callDocRef, (snapshot) => {
             const data = snapshot.data();
             if (!pc.currentRemoteDescription && data?.answer) {
@@ -123,15 +137,17 @@ export default function CallModal({
               setCallStatus('connected');
             }
             if (data?.status === 'ended' || data?.status === 'declined') {
-              toast(data.status === 'declined' ? "Call declined" : "Call ended");
-              endCall();
+              if (!isEndingRef.current) {
+                isEndingRef.current = true;
+                toast(data.status === 'declined' ? "Call declined" : "Call ended", { id: 'call-status-toast' });
+                endCall();
+              }
             }
           });
 
-          // Listen for Remote (Receiver) ICE Candidates
           const unsubCandidates = onSnapshot(receiverCandidatesCol, (snapshot) => {
             snapshot.docChanges().forEach((change) => {
-              if (change.type === 'added') {
+              if (change.type === 'added' && !isEndingRef.current) {
                 const candidate = new RTCIceCandidate(change.doc.data());
                 pc.addIceCandidate(candidate).catch(console.error);
               }
@@ -143,7 +159,6 @@ export default function CallModal({
             unsubCandidates();
           };
         } else {
-          // Receiver Flow: Listen for offer and answer it
           const unsubCall = onSnapshot(callDocRef, async (snapshot) => {
             const data = snapshot.data();
             if (!pc.currentRemoteDescription && data?.offer) {
@@ -160,15 +175,17 @@ export default function CallModal({
               setCallStatus('connected');
             }
             if (data?.status === 'ended') {
-              toast("Call ended");
-              endCall();
+              if (!isEndingRef.current) {
+                isEndingRef.current = true;
+                toast("Call ended", { id: 'call-status-toast' });
+                endCall();
+              }
             }
           });
 
-          // Listen for Caller's ICE Candidates
           const unsubCandidates = onSnapshot(callerCandidatesCol, (snapshot) => {
             snapshot.docChanges().forEach((change) => {
-              if (change.type === 'added') {
+              if (change.type === 'added' && !isEndingRef.current) {
                 const candidate = new RTCIceCandidate(change.doc.data());
                 pc.addIceCandidate(candidate).catch(console.error);
               }
@@ -182,7 +199,7 @@ export default function CallModal({
         }
       } catch (err: any) {
         console.error("WebRTC initialization error:", err);
-        toast.error("Call setup error: " + (err?.message || "Media access failed"));
+        toast.error("Call setup error: " + (err?.message || "Media access failed"), { id: 'call-status-toast' });
         endCall();
       }
     };
@@ -200,7 +217,6 @@ export default function CallModal({
     };
   }, [callId, isCaller, callType]);
 
-  // Duration Timer when call is connected
   useEffect(() => {
     if (callStatus === 'connected') {
       timerRef.current = setInterval(() => {
@@ -228,23 +244,6 @@ export default function CallModal({
       });
       setIsVideoDisabled(!isVideoDisabled);
     }
-  };
-
-  const endCall = async () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    try {
-      await updateDoc(doc(db, 'calls', callId), {
-        status: 'ended',
-        endedAt: serverTimestamp()
-      });
-    } catch {}
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
-    }
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-    }
-    onEndCall();
   };
 
   const formatDuration = (totalSecs: number) => {
@@ -291,7 +290,7 @@ export default function CallModal({
           className={`w-full h-full object-cover ${callType === 'audio' || callStatus !== 'connected' ? 'hidden' : 'block'}`}
         />
 
-        {/* Remote Audio Fallback Avatar (For voice calls or when remote video not ready) */}
+        {/* Remote Audio Fallback Avatar */}
         {(callType === 'audio' || callStatus !== 'connected') && (
           <div className="flex flex-col items-center justify-center gap-4 text-center p-8">
             <div className="relative">
@@ -339,7 +338,6 @@ export default function CallModal({
 
       {/* Bottom Floating Control Buttons */}
       <div className="w-full max-w-md flex items-center justify-center gap-4 sm:gap-6 py-3 px-6 bg-surface/80 backdrop-blur-2xl rounded-3xl border border-white/15 shadow-2xl z-20 mb-2">
-        {/* Mute Audio Toggle */}
         <button
           type="button"
           onClick={toggleMuteAudio}
@@ -353,7 +351,6 @@ export default function CallModal({
           {isAudioMuted ? <MicOff size={22} /> : <Mic size={22} />}
         </button>
 
-        {/* Video Toggle (Only in video call) */}
         {callType === 'video' && (
           <button
             type="button"
@@ -369,7 +366,6 @@ export default function CallModal({
           </button>
         )}
 
-        {/* End Call Button (Big Red) */}
         <button
           type="button"
           onClick={endCall}

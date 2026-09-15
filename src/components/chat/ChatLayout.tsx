@@ -20,11 +20,13 @@ import IncomingCallModal from '../call/IncomingCallModal';
 import Sidebar from './Sidebar';
 import ChatRoom from './ChatRoom';
 import MobileBottomNav, { type MobileTab } from './MobileBottomNav';
+import { usePresence } from '../../hooks/usePresence';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Toaster, toast } from 'react-hot-toast';
 
 export default function ChatLayout() {
   const { user } = useAuthStore();
+  usePresence();
   
   // Navigation & Modal States
   const [mobileTab, setMobileTab] = useState<MobileTab>('chats');

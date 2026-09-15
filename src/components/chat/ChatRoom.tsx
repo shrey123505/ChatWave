@@ -7,9 +7,10 @@ import {
   addDoc, 
   deleteDoc, 
   doc, 
-  serverTimestamp,
-  updateDoc,
-  setDoc
+  serverTimestamp, 
+  updateDoc, 
+  setDoc,
+  getDoc
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -21,17 +22,24 @@ import {
   Smile, 
   Reply, 
   X,
-  Info,
   Paperclip,
   Mic,
   CheckCheck,
   Maximize2,
   Phone,
-  Video
+  Video,
+  MoreVertical,
+  BellOff,
+  Bell,
+  Ban,
+  AlertTriangle,
+  UserCheck
 } from 'lucide-react';
 import { compressImage } from '../../utils/imageCompressor';
 import { playNotificationSound, showSystemNotification, requestNotificationPermission } from '../../utils/notification';
+import { formatPresence } from '../../hooks/usePresence';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
+import ReportUserModal from './ReportUserModal';
 import toast from 'react-hot-toast';
 
 interface Message {
@@ -75,9 +83,18 @@ export default function ChatRoom({
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   
+  // Real-time Presence & Active User Live Data
+  const [liveUserData, setLiveUserData] = useState<any>(activeUser);
+
   // Typing Indicator States
   const [isOtherTyping, setIsOtherTyping] = useState(false);
   const typingTimeoutRef = useRef<any>(null);
+
+  // Safety & Mute States
+  const [isMuted, setIsMuted] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // Audio Recording States
   const [isRecording, setIsRecording] = useState(false);
@@ -90,17 +107,42 @@ export default function ChatRoom({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isInitialLoad = useRef(true);
 
-  // Ask for notification permissions on first chat mount
-  useEffect(() => {
-    requestNotificationPermission().catch(() => {});
-  }, []);
-
   // Deterministic chatId between current user and activeUser
   const chatId = user?.uid && activeUser?.uid
     ? [user.uid, activeUser.uid].sort().join('_')
     : null;
 
-  // 1. Real-time Firestore Listener for Messages
+  // Ask for notification permissions
+  useEffect(() => {
+    requestNotificationPermission().catch(() => {});
+  }, []);
+
+  // Check Mute Status & Blocked Status from localStorage/Firestore
+  useEffect(() => {
+    if (!chatId || !user?.uid || !activeUser?.uid) return;
+
+    // Check Mute
+    const muted = localStorage.getItem(`chatwave_muted_${chatId}`) === 'true';
+    setIsMuted(muted);
+
+    // Check Blocked
+    getDoc(doc(db, 'users', user.uid, 'blockedUsers', activeUser.uid)).then((d) => {
+      setIsBlocked(d.exists());
+    });
+  }, [chatId, user?.uid, activeUser?.uid]);
+
+  // Real-time Listener for Active User's Presence (isOnline / lastSeen)
+  useEffect(() => {
+    if (!activeUser?.uid) return;
+    const unsub = onSnapshot(doc(db, 'users', activeUser.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        setLiveUserData({ uid: docSnap.id, ...docSnap.data() });
+      }
+    });
+    return () => unsub();
+  }, [activeUser?.uid]);
+
+  // Real-time Firestore Listener for Messages
   useEffect(() => {
     if (!chatId) return;
 
@@ -115,9 +157,13 @@ export default function ChatRoom({
         ...docSnap.data()
       })) as Message[];
 
-      // Check if new incoming message arrived to play notification sound
+      // Check if new incoming message arrived and play sound if not muted
       if (!isInitialLoad.current && snapshot.docChanges().some(change => change.type === 'added' && change.doc.data().senderId === activeUser.uid)) {
-        playNotificationSound();
+        const isChatMuted = localStorage.getItem(`chatwave_muted_${chatId}`) === 'true';
+        if (!isChatMuted) {
+          playNotificationSound();
+        }
+
         const latestMsg = msgs[msgs.length - 1];
         if (latestMsg && document.hidden) {
           showSystemNotification(
@@ -147,7 +193,7 @@ export default function ChatRoom({
     return () => unsubscribe();
   }, [chatId, activeUser.uid, activeUser.name, user?.uid]);
 
-  // 2. Real-time Listener for Other User's Typing Indicator
+  // Real-time Listener for Other User's Typing Indicator
   useEffect(() => {
     if (!chatId || !activeUser?.uid) return;
 
@@ -197,9 +243,14 @@ export default function ChatRoom({
     setDoc(typingDocRef, { isTyping: false, timestamp: Date.now() }, { merge: true }).catch(() => {});
   };
 
-  // 3. Send Text Message
+  // Send Text Message
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isBlocked) {
+      toast.error("Unblock user to send messages.");
+      return;
+    }
+
     const trimmed = inputText.trim();
     if (!trimmed || !chatId || !user) return;
 
@@ -229,8 +280,13 @@ export default function ChatRoom({
     }
   };
 
-  // 4. Send Image Message
+  // Send Image Message
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isBlocked) {
+      toast.error("Unblock user to send photos.");
+      return;
+    }
+
     const file = e.target.files?.[0];
     if (!file || !chatId || !user) return;
 
@@ -267,8 +323,13 @@ export default function ChatRoom({
     }
   };
 
-  // 5. Voice Notes (MediaRecorder)
+  // Voice Notes
   const startRecording = async () => {
+    if (isBlocked) {
+      toast.error("Unblock user to record voice notes.");
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
@@ -276,9 +337,7 @@ export default function ChatRoom({
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
       mediaRecorder.start();
@@ -290,7 +349,7 @@ export default function ChatRoom({
       }, 1000);
     } catch (err: any) {
       console.error("Mic access error:", err);
-      toast.error("Microphone access denied. Please allow mic permissions.");
+      toast.error("Microphone access denied.");
     }
   };
 
@@ -356,23 +415,70 @@ export default function ChatRoom({
     if (!chatId) return;
     setShowReactionPickerFor(null);
     try {
-      await updateDoc(doc(db, 'chats', chatId, 'messages', msgId), {
-        reaction: emoji
-      });
+      await updateDoc(doc(db, 'chats', chatId, 'messages', msgId), { reaction: emoji });
     } catch (err: any) {
       console.error("Reaction failed:", err);
     }
   };
 
+  // Toggle Mute Notifications
+  const toggleMute = () => {
+    if (!chatId) return;
+    const newMuted = !isMuted;
+    setIsMuted(newMuted);
+    localStorage.setItem(`chatwave_muted_${chatId}`, String(newMuted));
+    toast.success(newMuted ? "Notifications muted" : "Notifications unmuted");
+    setShowMenu(false);
+  };
+
+  // Toggle Block User
+  const toggleBlock = async () => {
+    if (!user || !activeUser?.uid) return;
+    const newBlocked = !isBlocked;
+    setIsBlocked(newBlocked);
+    setShowMenu(false);
+
+    try {
+      const blockRef = doc(db, 'users', user.uid, 'blockedUsers', activeUser.uid);
+      if (newBlocked) {
+        await setDoc(blockRef, { blockedAt: new Date().toISOString() });
+        toast.success(`Blocked @${activeUser.username || 'user'}`);
+      } else {
+        await deleteDoc(blockRef);
+        toast.success(`Unblocked @${activeUser.username || 'user'}`);
+      }
+    } catch (e: any) {
+      setIsBlocked(!newBlocked);
+      toast.error("Failed to update block: " + e.message);
+    }
+  };
+
+  // Helper to format clean 10:42 AM timestamp
   const formatMessageTime = (createdAt: any) => {
-    if (!createdAt) return '';
+    if (!createdAt) return 'Just now';
     const date = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Helper to check if date divider is needed
+  const getMessageDateLabel = (createdAt: any) => {
+    if (!createdAt) return null;
+    const date = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
+    const now = new Date();
+
+    if (date.toDateString() === now.toDateString()) return 'Today';
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+  };
+
+  const presenceDisplay = formatPresence(liveUserData?.isOnline, liveUserData?.lastSeen, liveUserData?.hideLastSeen);
+
   return (
-    <div className="flex-1 flex flex-col h-full w-full overflow-hidden bg-background/50 relative">
-      {/* Hidden File Input for Image Uploads */}
+    <div className="flex-1 flex flex-col h-full w-full overflow-hidden bg-background/50 relative select-none">
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -383,7 +489,7 @@ export default function ChatRoom({
       />
 
       {/* =======================================================
-          TOP HEADER BAR (Fixed / Sticky with Phone & Video Call)
+          TOP HEADER BAR (Fixed / Sticky at Top)
           ======================================================= */}
       <div className="flex-shrink-0 p-3 md:p-3.5 border-b border-white/10 flex items-center justify-between bg-surface/85 backdrop-blur-xl z-20 shadow-md">
         <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
@@ -402,20 +508,20 @@ export default function ChatRoom({
           >
             <div className="relative flex-shrink-0">
               <div className="w-10 h-10 rounded-full bg-primary/20 overflow-hidden border-2 border-primary/50 group-hover:scale-105 transition-transform">
-                {activeUser.photoURL ? (
-                  <img src={activeUser.photoURL} alt={activeUser.name} className="w-full h-full object-cover" />
+                {liveUserData?.photoURL ? (
+                  <img src={liveUserData.photoURL} alt={liveUserData.name} className="w-full h-full object-cover" />
                 ) : (
                   <UserIcon className="w-full h-full p-2 text-primary" />
                 )}
               </div>
               <span className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-surface rounded-full ${
-                isOtherTyping ? 'bg-emerald-400 animate-pulse' : 'bg-emerald-500'
+                liveUserData?.isOnline ? 'bg-emerald-400' : 'bg-slate-500'
               }`}></span>
             </div>
 
             <div className="flex-1 min-w-0">
               <h3 className="font-bold text-text text-sm sm:text-base group-hover:text-primary transition-colors truncate">
-                {activeUser.name || 'User'}
+                {liveUserData?.name || 'User'}
               </h3>
               {isOtherTyping ? (
                 <p className="text-xs text-emerald-400 font-semibold flex items-center gap-1 animate-pulse">
@@ -426,179 +532,222 @@ export default function ChatRoom({
                 </p>
               ) : (
                 <p className="text-xs text-text-secondary truncate">
-                  @{activeUser.username || 'user'} • <span className="text-primary hover:underline">View Profile</span>
+                  {presenceDisplay || `@${liveUserData?.username || 'user'}`}
                 </p>
               )}
             </div>
           </div>
         </div>
 
-        {/* Right Header Actions: Call, Video, Info */}
-        <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 ml-2">
-          {/* Audio Call Button */}
+        {/* Header Actions */}
+        <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 ml-2 relative">
           <button
             onClick={() => onStartCall('audio')}
             className="p-2.5 rounded-full bg-white/5 hover:bg-primary/20 text-text hover:text-primary transition-all active:scale-95"
-            title="Start Audio Call"
+            title="Voice Call"
           >
             <Phone size={18} />
           </button>
 
-          {/* Video Call Button */}
           <button
             onClick={() => onStartCall('video')}
             className="p-2.5 rounded-full bg-white/5 hover:bg-primary/20 text-text hover:text-primary transition-all active:scale-95"
-            title="Start Video Call"
+            title="Video Call"
           >
             <Video size={18} />
           </button>
 
-          {/* Profile Info Button */}
+          {/* Three-Dot Menu */}
           <button
-            onClick={onViewProfile}
+            onClick={() => setShowMenu(!showMenu)}
             className="p-2.5 rounded-full hover:bg-white/10 text-text-secondary hover:text-white transition-colors"
-            title="Profile Info"
+            title="More Options"
           >
-            <Info size={18} />
+            <MoreVertical size={18} />
           </button>
+
+          {/* Dropdown Menu */}
+          {showMenu && (
+            <div className="absolute top-12 right-0 w-48 bg-surface/95 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl p-1.5 z-50 text-xs text-text animate-in fade-in zoom-in-95 duration-150">
+              <button
+                onClick={() => { setShowMenu(false); onViewProfile(); }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-white/10 transition-colors text-left"
+              >
+                <UserCheck size={16} /> View Profile
+              </button>
+              <button
+                onClick={toggleMute}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-white/10 transition-colors text-left"
+              >
+                {isMuted ? <Bell size={16} className="text-emerald-400" /> : <BellOff size={16} />}
+                {isMuted ? 'Unmute Chat' : 'Mute Notifications'}
+              </button>
+              <button
+                onClick={() => { setShowMenu(false); setShowReportModal(true); }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-white/10 text-amber-400 transition-colors text-left"
+              >
+                <AlertTriangle size={16} /> Report User
+              </button>
+              <div className="my-1 border-t border-white/10" />
+              <button
+                onClick={toggleBlock}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-red-500/20 text-red-400 transition-colors text-left font-semibold"
+              >
+                <Ban size={16} /> {isBlocked ? 'Unblock User' : 'Block User'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Blocked User Warning Banner */}
+      {isBlocked && (
+        <div className="flex-shrink-0 p-2.5 bg-red-500/15 border-b border-red-500/30 flex items-center justify-between px-4 text-xs text-red-300">
+          <span className="flex items-center gap-1.5">
+            <Ban size={14} /> You have blocked this user.
+          </span>
+          <button
+            onClick={toggleBlock}
+            className="underline font-bold hover:text-white"
+          >
+            Unblock
+          </button>
+        </div>
+      )}
+
       {/* =======================================================
           MESSAGES SCROLL AREA (Only This Area Scrolls!)
+          Messages are pinned to the left and right edges!
           ======================================================= */}
-      <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-3 min-h-0">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-2.5 sm:p-4 space-y-2 min-h-0 w-full">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center text-text-secondary opacity-60 p-8 space-y-2">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
               <Smile size={32} className="text-primary" />
             </div>
             <p className="font-semibold text-text">No messages yet</p>
-            <p className="text-xs max-w-xs">Say hello, share a photo, or start a call with {activeUser.name}!</p>
+            <p className="text-xs max-w-xs">Say hello, share a photo, or start a call with {liveUserData?.name}!</p>
           </div>
         ) : (
-          messages.map((msg) => {
+          messages.map((msg, index) => {
             const isMe = msg.senderId === user?.uid;
+            
+            // Date Divider check
+            const currentDateLabel = getMessageDateLabel(msg.createdAt);
+            const prevMessage = index > 0 ? messages[index - 1] : null;
+            const prevDateLabel = prevMessage ? getMessageDateLabel(prevMessage.createdAt) : null;
+            const showDateDivider = currentDateLabel && currentDateLabel !== prevDateLabel;
+
             return (
-              <div 
-                key={msg.id} 
-                className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative`}
-              >
-                {/* Reply context quote */}
-                {msg.replyTo && (
-                  <div className={`text-xs px-3 py-1 mb-1 rounded-lg max-w-xs bg-white/5 border-l-2 border-primary text-text-secondary truncate ${isMe ? 'mr-2' : 'ml-2'}`}>
-                    <span className="font-semibold text-primary">{msg.replyTo.senderName}: </span>
-                    {msg.replyTo.text}
+              <div key={msg.id} className="w-full flex flex-col">
+                {/* Clean Centered Date Separator Pill */}
+                {showDateDivider && (
+                  <div className="w-full flex justify-center my-3">
+                    <span className="px-3 py-1 bg-surface/70 border border-white/10 rounded-full text-[11px] font-semibold text-text-secondary shadow-sm">
+                      {currentDateLabel}
+                    </span>
                   </div>
                 )}
 
-                <div className="flex items-center gap-1 max-w-[85%] sm:max-w-md">
-                  {/* Actions for other user's message (left aligned) */}
-                  {!isMe && (
-                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-                      <button 
-                        onClick={() => setShowReactionPickerFor(showReactionPickerFor === msg.id ? null : msg.id)}
-                        className="p-1.5 hover:bg-white/10 rounded-full text-text-secondary"
-                        title="React"
-                      >
-                        <Smile size={15} />
-                      </button>
-                      <button 
-                        onClick={() => setReplyingTo(msg)}
-                        className="p-1.5 hover:bg-white/10 rounded-full text-text-secondary"
-                        title="Reply"
-                      >
-                        <Reply size={15} />
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Message Bubble */}
-                  <div 
-                    className={`relative rounded-2xl text-sm shadow-md break-words transition-all ${
-                      isMe 
-                        ? 'bg-gradient-to-r from-primary to-secondary text-white rounded-br-none' 
-                        : 'bg-surface/80 text-text border border-white/10 rounded-bl-none'
-                    } ${msg.type === 'image' ? 'p-1.5' : 'px-4 py-2.5'}`}
-                  >
-                    {/* Image Message */}
-                    {msg.type === 'image' && msg.imageUrl && (
-                      <div className="relative group/img cursor-pointer" onClick={() => setPreviewImage(msg.imageUrl || null)}>
-                        <img 
-                          src={msg.imageUrl} 
-                          alt="Shared Photo" 
-                          className="max-h-72 w-full object-cover rounded-xl shadow"
-                          loading="lazy"
-                        />
-                        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover/img:opacity-100 transition-opacity rounded-xl flex items-center justify-center">
-                          <Maximize2 size={24} className="text-white drop-shadow" />
+                {/* Message Row - Pinned firmly to far right (isMe) or far left (!isMe) */}
+                <div className={`w-full flex ${isMe ? 'justify-end' : 'justify-start'} group my-0.5`}>
+                  <div className={`flex items-end gap-1.5 max-w-[85%] sm:max-w-[72%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                    
+                    {/* Message Bubble */}
+                    <div 
+                      className={`relative rounded-2xl text-sm shadow-md break-words transition-all ${
+                        isMe 
+                          ? 'bg-gradient-to-r from-primary to-secondary text-white rounded-br-none' 
+                          : 'bg-surface/85 text-text border border-white/10 rounded-bl-none'
+                      } ${msg.type === 'image' ? 'p-1.5' : 'px-3.5 py-2 sm:px-4 sm:py-2.5'}`}
+                    >
+                      {/* Reply Quote context */}
+                      {msg.replyTo && (
+                        <div className={`text-xs px-2.5 py-1 mb-1.5 rounded-lg bg-black/20 border-l-2 border-white/70 truncate ${isMe ? 'text-white/90' : 'text-text-secondary'}`}>
+                          <span className="font-semibold text-primary">{msg.replyTo.senderName}: </span>
+                          <span>{msg.replyTo.text}</span>
                         </div>
+                      )}
+
+                      {/* Image Message */}
+                      {msg.type === 'image' && msg.imageUrl && (
+                        <div className="relative group/img cursor-pointer" onClick={() => setPreviewImage(msg.imageUrl || null)}>
+                          <img 
+                            src={msg.imageUrl} 
+                            alt="Shared Photo" 
+                            className="max-h-72 w-full object-cover rounded-xl shadow"
+                            loading="lazy"
+                          />
+                          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover/img:opacity-100 transition-opacity rounded-xl flex items-center justify-center">
+                            <Maximize2 size={24} className="text-white drop-shadow" />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Audio Voice Note Message */}
+                      {msg.type === 'audio' && msg.audioUrl && (
+                        <VoiceMessagePlayer audioUrl={msg.audioUrl} isMe={isMe} />
+                      )}
+
+                      {/* Text Message Content */}
+                      {msg.text && (
+                        <p className={msg.type === 'image' ? 'px-2.5 py-1.5 text-xs' : 'leading-relaxed'}>{msg.text}</p>
+                      )}
+
+                      {/* Timestamp & Double Tick (Seen Status) */}
+                      <div className={`flex items-center justify-end gap-1 text-[10px] mt-0.5 font-mono ${isMe ? 'text-white/80' : 'text-text-secondary'}`}>
+                        <span>{formatMessageTime(msg.createdAt)}</span>
+                        {isMe && (
+                          <span title={msg.seen ? 'Seen' : 'Delivered'}>
+                            {msg.seen ? (
+                              <CheckCheck size={14} className="text-sky-300 font-bold" />
+                            ) : (
+                              <CheckCheck size={14} className="text-white/50" />
+                            )}
+                          </span>
+                        )}
                       </div>
-                    )}
 
-                    {/* Audio Voice Note Message */}
-                    {msg.type === 'audio' && msg.audioUrl && (
-                      <VoiceMessagePlayer audioUrl={msg.audioUrl} isMe={isMe} />
-                    )}
-
-                    {/* Text Message Content */}
-                    {msg.text && (
-                      <p className={msg.type === 'image' ? 'px-2.5 py-1.5 text-xs' : ''}>{msg.text}</p>
-                    )}
-
-                    {/* Timestamp & Double Tick (Seen Status) */}
-                    <div className={`flex items-center justify-end gap-1 text-[10px] mt-1 ${isMe ? 'text-white/80' : 'text-text-secondary'}`}>
-                      <span>{formatMessageTime(msg.createdAt)}</span>
-                      {isMe && (
-                        <span title={msg.seen ? 'Seen' : 'Delivered'}>
-                          {msg.seen ? (
-                            <CheckCheck size={14} className="text-sky-300 font-bold" />
-                          ) : (
-                            <CheckCheck size={14} className="text-white/50" />
-                          )}
-                        </span>
+                      {/* Emoji Reaction Badge */}
+                      {msg.reaction && (
+                        <div className="absolute -bottom-2 right-2 bg-surface border border-white/20 rounded-full px-1.5 py-0.5 text-xs shadow-lg">
+                          {msg.reaction}
+                        </div>
                       )}
                     </div>
 
-                    {/* Emoji Reaction Badge */}
-                    {msg.reaction && (
-                      <div className="absolute -bottom-2 right-2 bg-surface border border-white/20 rounded-full px-1.5 py-0.5 text-xs shadow-lg">
-                        {msg.reaction}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Actions for my message (right aligned) */}
-                  {isMe && (
-                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+                    {/* Action buttons (Reply, React, Delete) */}
+                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity pb-1">
                       <button 
                         onClick={() => setShowReactionPickerFor(showReactionPickerFor === msg.id ? null : msg.id)}
-                        className="p-1.5 hover:bg-white/10 rounded-full text-text-secondary"
+                        className="p-1 hover:bg-white/10 rounded-full text-text-secondary hover:text-white"
                         title="React"
                       >
-                        <Smile size={15} />
+                        <Smile size={14} />
                       </button>
                       <button 
                         onClick={() => setReplyingTo(msg)}
-                        className="p-1.5 hover:bg-white/10 rounded-full text-text-secondary"
+                        className="p-1 hover:bg-white/10 rounded-full text-text-secondary hover:text-white"
                         title="Reply"
                       >
-                        <Reply size={15} />
+                        <Reply size={14} />
                       </button>
-                      <button 
-                        onClick={() => handleDeleteMessage(msg.id)}
-                        className="p-1.5 hover:bg-red-500/20 text-red-400 rounded-full transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      {isMe && (
+                        <button 
+                          onClick={() => handleDeleteMessage(msg.id)}
+                          className="p-1 hover:bg-red-500/20 text-red-400 rounded-full"
+                          title="Delete"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 {/* Reaction Picker Overlay */}
                 {showReactionPickerFor === msg.id && (
-                  <div className={`mt-1 p-1 bg-surface border border-white/20 rounded-full flex gap-1 shadow-2xl z-20 ${isMe ? 'mr-4' : 'ml-4'}`}>
+                  <div className={`my-1 p-1 bg-surface border border-white/20 rounded-full flex gap-1 shadow-2xl z-20 ${isMe ? 'self-end mr-4' : 'self-start ml-4'}`}>
                     {QUICK_REACTIONS.map((emoji) => (
                       <button
                         key={emoji}
@@ -619,7 +768,7 @@ export default function ChatRoom({
 
       {/* Reply Banner */}
       {replyingTo && (
-        <div className="flex-shrink-0 px-4 py-2 bg-surface/90 border-t border-white/10 flex items-center justify-between text-xs z-10">
+        <div className="flex-shrink-0 px-4 py-2 bg-surface/95 border-t border-white/10 flex items-center justify-between text-xs z-10">
           <div className="truncate flex items-center gap-2">
             <Reply size={14} className="text-primary" />
             <span className="text-text-secondary">Replying to <b className="text-text">{replyingTo.senderName}</b>:</span>
@@ -634,11 +783,15 @@ export default function ChatRoom({
       )}
 
       {/* =======================================================
-          BOTTOM INPUT BAR (Fixed / Sticky at Bottom of Chat)
+          BOTTOM INPUT BAR (Fixed at Bottom, always reachable!)
           ======================================================= */}
       <div className="flex-shrink-0 p-2.5 sm:p-3 border-t border-white/10 bg-surface/85 backdrop-blur-xl z-20">
-        {isRecording ? (
-          /* Voice Recording Active Bar */
+        {isBlocked ? (
+          <div className="text-center p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400">
+            You cannot send messages to a blocked user.
+          </div>
+        ) : isRecording ? (
+          /* Voice Recording Bar */
           <div className="flex items-center justify-between gap-3 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2 animate-pulse">
             <div className="flex items-center gap-2.5 text-red-400">
               <span className="w-3 h-3 rounded-full bg-red-500 animate-ping"></span>
@@ -653,7 +806,7 @@ export default function ChatRoom({
                 type="button"
                 onClick={cancelRecording}
                 className="p-2 rounded-full hover:bg-white/10 text-text-secondary hover:text-red-400 transition-colors"
-                title="Cancel recording"
+                title="Cancel"
               >
                 <Trash2 size={18} />
               </button>
@@ -670,7 +823,6 @@ export default function ChatRoom({
         ) : (
           /* Standard Input Bar */
           <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-            {/* Attach Image Button */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -681,7 +833,6 @@ export default function ChatRoom({
               <Paperclip size={18} />
             </button>
 
-            {/* Message Input Box */}
             <input 
               type="text"
               placeholder="Type a message..."
@@ -690,12 +841,11 @@ export default function ChatRoom({
               className="flex-1 px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white/10 border border-white/15 rounded-xl focus:outline-none focus:border-primary text-text placeholder:text-white/50 text-sm shadow-inner"
             />
 
-            {/* Action Button: Send or Mic */}
             {inputText.trim() ? (
               <button 
                 type="submit"
                 className="p-2.5 sm:p-3 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:opacity-90 active:scale-95 transition-all shadow-lg flex-shrink-0"
-                title="Send message"
+                title="Send"
               >
                 <Send size={18} />
               </button>
@@ -713,7 +863,7 @@ export default function ChatRoom({
         )}
       </div>
 
-      {/* Fullscreen Image Preview Lightbox */}
+      {/* Fullscreen Lightbox Preview */}
       {previewImage && (
         <div 
           className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
@@ -733,6 +883,14 @@ export default function ChatRoom({
             onClick={(e) => e.stopPropagation()}
           />
         </div>
+      )}
+
+      {/* Report Modal */}
+      {showReportModal && (
+        <ReportUserModal
+          targetUser={liveUserData}
+          onClose={() => setShowReportModal(false)}
+        />
       )}
     </div>
   );
