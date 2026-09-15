@@ -1,10 +1,22 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from '../../lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { 
+  doc, 
+  getDoc, 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc, 
+  serverTimestamp 
+} from 'firebase/firestore';
 import { LogOut, Settings as SettingsIcon, MessageSquare, UserCircle, ScanLine } from 'lucide-react';
 import SettingsModal from '../settings/SettingsModal';
 import ProfileModal from '../profile/ProfileModal';
 import QRScannerModal from '../settings/QRScannerModal';
+import CallModal from '../call/CallModal';
+import IncomingCallModal from '../call/IncomingCallModal';
 import Sidebar from './Sidebar';
 import ChatRoom from './ChatRoom';
 import MobileBottomNav, { type MobileTab } from './MobileBottomNav';
@@ -17,12 +29,106 @@ export default function ChatLayout() {
   // Navigation & Modal States
   const [mobileTab, setMobileTab] = useState<MobileTab>('chats');
   const [showSettings, setShowSettings] = useState(false);
-  const [showMyProfileModal, setShowMyProfileModal] = useState(false); // for desktop
+  const [showMyProfileModal, setShowMyProfileModal] = useState(false);
   const [viewingProfileUser, setViewingProfileUser] = useState<any | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [activeChatUser, setActiveChatUser] = useState<any | null>(null);
 
-  // Handle URL scanning: ?user=UID
+  // Audio / Video Call States
+  const [activeCall, setActiveCall] = useState<{
+    callId: string;
+    isCaller: boolean;
+    callType: 'video' | 'audio';
+    remoteUser: any;
+  } | null>(null);
+
+  const [incomingCall, setIncomingCall] = useState<any | null>(null);
+
+  // 1. Real-time Listener for Incoming Calls to Current User
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const q = query(
+      collection(db, 'calls'),
+      where('receiverId', '==', user.uid),
+      where('status', '==', 'calling')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const callData = { id: change.doc.id, ...change.doc.data() };
+          setIncomingCall(callData);
+        } else if (change.type === 'modified' || change.type === 'removed') {
+          const status = change.doc.data().status;
+          if (status === 'ended' || status === 'declined') {
+            setIncomingCall((prev: any) => (prev?.id === change.doc.id ? null : prev));
+          }
+        }
+      });
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
+
+  // 2. Start an Outgoing Call
+  const handleStartCall = async (type: 'video' | 'audio') => {
+    if (!user || !activeChatUser) return;
+
+    try {
+      const callDocRef = await addDoc(collection(db, 'calls'), {
+        callerId: user.uid,
+        callerName: user.displayName || user.email || 'Friend',
+        callerPhotoURL: user.photoURL || '',
+        receiverId: activeChatUser.uid,
+        receiverName: activeChatUser.name || 'User',
+        receiverPhotoURL: activeChatUser.photoURL || '',
+        status: 'calling',
+        type,
+        createdAt: serverTimestamp()
+      });
+
+      setActiveCall({
+        callId: callDocRef.id,
+        isCaller: true,
+        callType: type,
+        remoteUser: activeChatUser
+      });
+    } catch (err: any) {
+      console.error("Failed to start call:", err);
+      toast.error("Call failed to initialize: " + err.message);
+    }
+  };
+
+  // 3. Accept Incoming Call
+  const handleAcceptIncomingCall = () => {
+    if (!incomingCall) return;
+    setActiveCall({
+      callId: incomingCall.id,
+      isCaller: false,
+      callType: incomingCall.type,
+      remoteUser: {
+        uid: incomingCall.callerId,
+        name: incomingCall.callerName,
+        photoURL: incomingCall.callerPhotoURL
+      }
+    });
+    setIncomingCall(null);
+  };
+
+  // 4. Decline Incoming Call
+  const handleDeclineIncomingCall = async () => {
+    if (!incomingCall) return;
+    try {
+      await updateDoc(doc(db, 'calls', incomingCall.id), {
+        status: 'declined',
+        endedAt: serverTimestamp()
+      });
+    } catch {}
+    setIncomingCall(null);
+  };
+
+  // 5. Handle URL scanning: ?user=UID
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const scannedUid = urlParams.get('user');
@@ -48,7 +154,7 @@ export default function ChatLayout() {
   }, [user]);
 
   return (
-    <div className="flex h-screen h-[100dvh] bg-background overflow-hidden text-text relative">
+    <div className="flex h-screen h-[100dvh] w-full overflow-hidden bg-background text-text relative select-none">
       <Toaster position="top-center" />
 
       {/* =========================================
@@ -56,9 +162,9 @@ export default function ChatLayout() {
           ========================================= */}
       
       {/* Desktop Left Sidebar */}
-      <div className="hidden md:flex w-80 lg:w-96 border-r border-white/10 flex-col bg-surface/50 backdrop-blur-md transition-all">
+      <div className="hidden md:flex w-80 lg:w-96 border-r border-white/10 flex-col bg-surface/50 backdrop-blur-md transition-all h-full overflow-hidden">
         {/* Desktop Header */}
-        <div className="p-3.5 border-b border-white/10 flex justify-between items-center bg-black/20">
+        <div className="flex-shrink-0 p-3.5 border-b border-white/10 flex justify-between items-center bg-black/20">
           <h2 className="text-xl font-bold text-primary flex items-center gap-2">
             <MessageSquare size={24} /> ChatWave
           </h2>
@@ -104,12 +210,13 @@ export default function ChatLayout() {
       </div>
 
       {/* Desktop Main Content Area */}
-      <div className="hidden md:flex flex-1 flex-col bg-background/50 relative">
+      <div className="hidden md:flex flex-1 flex-col bg-background/50 relative h-full overflow-hidden">
         {activeChatUser ? (
           <ChatRoom 
             activeUser={activeChatUser} 
             onBack={() => setActiveChatUser(null)}
             onViewProfile={() => setViewingProfileUser(activeChatUser)}
+            onStartCall={handleStartCall}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center text-text-secondary flex-col gap-4 p-8 text-center">
@@ -120,7 +227,7 @@ export default function ChatLayout() {
               Welcome, {user?.displayName || 'User'}!
             </h3>
             <p className="max-w-md text-sm text-text-secondary">
-              Select a contact on the left to start chatting, or scan their QR code to connect instantly.
+              Select a contact on the left to start chatting, voice calling, or video calling.
             </p>
           </div>
         )}
@@ -129,14 +236,17 @@ export default function ChatLayout() {
       {/* =========================================
           MOBILE VIEW (Instagram-style Tabbed Layout)
           ========================================= */}
-      <div className="md:hidden flex flex-1 flex-col h-full h-[100dvh] w-full overflow-hidden">
+      <div className="md:hidden flex flex-1 flex-col h-full h-[100dvh] w-full overflow-hidden relative">
         {activeChatUser ? (
-          /* Full-screen Chat on Mobile (Bottom Bar is hidden inside chat) */
-          <ChatRoom 
-            activeUser={activeChatUser} 
-            onBack={() => setActiveChatUser(null)}
-            onViewProfile={() => setViewingProfileUser(activeChatUser)}
-          />
+          /* Full-screen Chat on Mobile (Header & Footer are locked, middle scrolls) */
+          <div className="flex-1 flex flex-col h-full w-full overflow-hidden">
+            <ChatRoom 
+              activeUser={activeChatUser} 
+              onBack={() => setActiveChatUser(null)}
+              onViewProfile={() => setViewingProfileUser(activeChatUser)}
+              onStartCall={handleStartCall}
+            />
+          </div>
         ) : (
           /* Main Tabbed Mobile Screens */
           <div className="flex-1 flex flex-col h-full overflow-hidden pb-16">
@@ -144,8 +254,7 @@ export default function ChatLayout() {
             {/* Tab 1: Chats Screen */}
             {mobileTab === 'chats' && (
               <div className="flex-1 flex flex-col h-full overflow-hidden">
-                {/* Mobile Header for Chats */}
-                <div className="p-3.5 border-b border-white/10 flex justify-between items-center bg-surface/80 backdrop-blur-md">
+                <div className="flex-shrink-0 p-3.5 border-b border-white/10 flex justify-between items-center bg-surface/80 backdrop-blur-md">
                   <h2 className="text-xl font-bold text-primary flex items-center gap-2">
                     <MessageSquare size={22} /> ChatWave
                   </h2>
@@ -176,7 +285,7 @@ export default function ChatLayout() {
               </div>
             )}
 
-            {/* Tab 2: Dedicated Search / Explore Screen */}
+            {/* Tab 2: Dedicated Search Screen */}
             {mobileTab === 'search' && (
               <div className="flex-1 flex flex-col h-full overflow-hidden">
                 <div className="flex-1 overflow-hidden">
@@ -188,7 +297,7 @@ export default function ChatLayout() {
               </div>
             )}
 
-            {/* Tab 3: My Profile Tab (Direct Instagram Profile Screen) */}
+            {/* Tab 3: My Profile Tab */}
             {mobileTab === 'profile' && (
               <div className="flex-1 flex flex-col h-full overflow-y-auto">
                 <ProfileModal 
@@ -198,7 +307,7 @@ export default function ChatLayout() {
               </div>
             )}
 
-            {/* Instagram-Style Sticky Bottom Bar on Mobile */}
+            {/* Sticky Bottom Navigation Bar on Mobile */}
             <MobileBottomNav 
               activeTab={mobileTab}
               onTabChange={(tab) => setMobileTab(tab)}
@@ -209,10 +318,30 @@ export default function ChatLayout() {
       </div>
 
       {/* =========================================
-          MODALS
+          MODALS & OVERLAYS
           ========================================= */}
 
-      {/* Settings Modal (Theme & QR Generator) */}
+      {/* WebRTC Active Call Modal */}
+      {activeCall && (
+        <CallModal 
+          callId={activeCall.callId}
+          isCaller={activeCall.isCaller}
+          callType={activeCall.callType}
+          remoteUser={activeCall.remoteUser}
+          onEndCall={() => setActiveCall(null)}
+        />
+      )}
+
+      {/* Incoming Call Dialog Alert */}
+      {incomingCall && !activeCall && (
+        <IncomingCallModal 
+          call={incomingCall}
+          onAccept={handleAcceptIncomingCall}
+          onDecline={handleDeclineIncomingCall}
+        />
+      )}
+
+      {/* Settings Modal */}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       
       {/* Desktop Own Profile Modal */}
@@ -226,7 +355,7 @@ export default function ChatLayout() {
         />
       )}
       
-      {/* View Other User's Profile Modal (Opened from Search, Contacts, or Chat Header) */}
+      {/* View Selected User Profile Modal */}
       {viewingProfileUser && (
         <ProfileModal 
           initialProfile={viewingProfileUser}

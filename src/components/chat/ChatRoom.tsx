@@ -25,9 +25,12 @@ import {
   Paperclip,
   Mic,
   CheckCheck,
-  Maximize2
+  Maximize2,
+  Phone,
+  Video
 } from 'lucide-react';
 import { compressImage } from '../../utils/imageCompressor';
+import { playNotificationSound, showSystemNotification, requestNotificationPermission } from '../../utils/notification';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import toast from 'react-hot-toast';
 
@@ -56,11 +59,13 @@ const QUICK_REACTIONS = ['❤️', '👍', '😂', '🔥', '👏', '😮'];
 export default function ChatRoom({ 
   activeUser, 
   onBack, 
-  onViewProfile 
+  onViewProfile,
+  onStartCall
 }: { 
   activeUser: any; 
   onBack: () => void; 
   onViewProfile: () => void;
+  onStartCall: (type: 'video' | 'audio') => void;
 }) {
   const { user } = useAuthStore();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -83,6 +88,12 @@ export default function ChatRoom({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isInitialLoad = useRef(true);
+
+  // Ask for notification permissions on first chat mount
+  useEffect(() => {
+    requestNotificationPermission().catch(() => {});
+  }, []);
 
   // Deterministic chatId between current user and activeUser
   const chatId = user?.uid && activeUser?.uid
@@ -103,6 +114,20 @@ export default function ChatRoom({
         id: docSnap.id,
         ...docSnap.data()
       })) as Message[];
+
+      // Check if new incoming message arrived to play notification sound
+      if (!isInitialLoad.current && snapshot.docChanges().some(change => change.type === 'added' && change.doc.data().senderId === activeUser.uid)) {
+        playNotificationSound();
+        const latestMsg = msgs[msgs.length - 1];
+        if (latestMsg && document.hidden) {
+          showSystemNotification(
+            `${activeUser.name || 'Friend'} on ChatWave`,
+            latestMsg.text || (latestMsg.imageUrl ? '📷 Sent a photo' : '🎙️ Sent a voice note')
+          );
+        }
+      }
+      isInitialLoad.current = false;
+
       setMessages(msgs);
 
       // Mark unread messages from other user as seen
@@ -120,7 +145,7 @@ export default function ChatRoom({
     });
 
     return () => unsubscribe();
-  }, [chatId, activeUser.uid, user?.uid]);
+  }, [chatId, activeUser.uid, activeUser.name, user?.uid]);
 
   // 2. Real-time Listener for Other User's Typing Indicator
   useEffect(() => {
@@ -131,7 +156,6 @@ export default function ChatRoom({
       if (snap.exists()) {
         const data = snap.data();
         const now = Date.now();
-        // Check if typing flag is true and updated within last 4 seconds
         if (data.isTyping && now - (data.timestamp || 0) < 4000) {
           setIsOtherTyping(true);
         } else {
@@ -157,11 +181,9 @@ export default function ChatRoom({
 
     if (!chatId || !user) return;
 
-    // Signal that current user is typing
     const typingDocRef = doc(db, 'chats', chatId, 'typing', user.uid);
     setDoc(typingDocRef, { isTyping: true, timestamp: Date.now() }, { merge: true }).catch(() => {});
 
-    // Clear previous timeout and set 2.5s debounce to stop typing
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
       setDoc(typingDocRef, { isTyping: false, timestamp: Date.now() }, { merge: true }).catch(() => {});
@@ -216,7 +238,6 @@ export default function ChatRoom({
     const toastId = toast.loading("Sending photo...");
 
     try {
-      // Compress image for high resolution yet small footprint (~30KB)
       const compressedBase64 = await compressImage(file, 800, 800, 0.7);
 
       const replySnapshot = replyingTo ? {
@@ -269,7 +290,7 @@ export default function ChatRoom({
       }, 1000);
     } catch (err: any) {
       console.error("Mic access error:", err);
-      toast.error("Microphone access denied. Please allow mic permissions in browser.");
+      toast.error("Microphone access denied. Please allow mic permissions.");
     }
   };
 
@@ -294,7 +315,6 @@ export default function ChatRoom({
       const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
       mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop());
 
-      // Convert audio Blob to Base64
       const reader = new FileReader();
       reader.readAsDataURL(audioBlob);
       reader.onloadend = async () => {
@@ -351,7 +371,7 @@ export default function ChatRoom({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full h-[100dvh] bg-background/50 relative overflow-hidden">
+    <div className="flex-1 flex flex-col h-full w-full overflow-hidden bg-background/50 relative">
       {/* Hidden File Input for Image Uploads */}
       <input 
         type="file" 
@@ -362,8 +382,10 @@ export default function ChatRoom({
         disabled={isUploadingImage}
       />
 
-      {/* Instagram-Style Top Header Bar */}
-      <div className="p-3 md:p-3.5 border-b border-white/10 flex items-center justify-between bg-surface/80 backdrop-blur-xl z-20 shadow-sm">
+      {/* =======================================================
+          TOP HEADER BAR (Fixed / Sticky with Phone & Video Call)
+          ======================================================= */}
+      <div className="flex-shrink-0 p-3 md:p-3.5 border-b border-white/10 flex items-center justify-between bg-surface/85 backdrop-blur-xl z-20 shadow-md">
         <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
           <button 
             onClick={onBack} 
@@ -373,7 +395,7 @@ export default function ChatRoom({
             <ArrowLeft size={22} />
           </button>
           
-          {/* Clickable Profile Area */}
+          {/* Clickable Profile Info */}
           <div 
             onClick={onViewProfile} 
             className="flex items-center gap-3 cursor-pointer group flex-1 min-w-0"
@@ -395,7 +417,6 @@ export default function ChatRoom({
               <h3 className="font-bold text-text text-sm sm:text-base group-hover:text-primary transition-colors truncate">
                 {activeUser.name || 'User'}
               </h3>
-              {/* Real-time Typing Indicator in Header */}
               {isOtherTyping ? (
                 <p className="text-xs text-emerald-400 font-semibold flex items-center gap-1 animate-pulse">
                   <span>typing</span>
@@ -412,25 +433,48 @@ export default function ChatRoom({
           </div>
         </div>
 
-        {/* Right Action: Profile Info button */}
-        <button
-          onClick={onViewProfile}
-          className="p-2 rounded-full hover:bg-white/10 text-text-secondary hover:text-white transition-colors ml-2"
-          title="Profile Info"
-        >
-          <Info size={20} />
-        </button>
+        {/* Right Header Actions: Call, Video, Info */}
+        <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 ml-2">
+          {/* Audio Call Button */}
+          <button
+            onClick={() => onStartCall('audio')}
+            className="p-2.5 rounded-full bg-white/5 hover:bg-primary/20 text-text hover:text-primary transition-all active:scale-95"
+            title="Start Audio Call"
+          >
+            <Phone size={18} />
+          </button>
+
+          {/* Video Call Button */}
+          <button
+            onClick={() => onStartCall('video')}
+            className="p-2.5 rounded-full bg-white/5 hover:bg-primary/20 text-text hover:text-primary transition-all active:scale-95"
+            title="Start Video Call"
+          >
+            <Video size={18} />
+          </button>
+
+          {/* Profile Info Button */}
+          <button
+            onClick={onViewProfile}
+            className="p-2.5 rounded-full hover:bg-white/10 text-text-secondary hover:text-white transition-colors"
+            title="Profile Info"
+          >
+            <Info size={18} />
+          </button>
+        </div>
       </div>
 
-      {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      {/* =======================================================
+          MESSAGES SCROLL AREA (Only This Area Scrolls!)
+          ======================================================= */}
+      <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-3 min-h-0">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center text-text-secondary opacity-60 p-8 space-y-2">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
               <Smile size={32} className="text-primary" />
             </div>
             <p className="font-semibold text-text">No messages yet</p>
-            <p className="text-xs max-w-xs">Say hello or share a photo with {activeUser.name}!</p>
+            <p className="text-xs max-w-xs">Say hello, share a photo, or start a call with {activeUser.name}!</p>
           </div>
         ) : (
           messages.map((msg) => {
@@ -469,7 +513,7 @@ export default function ChatRoom({
                     </div>
                   )}
 
-                  {/* Message Bubble Container */}
+                  {/* Message Bubble */}
                   <div 
                     className={`relative rounded-2xl text-sm shadow-md break-words transition-all ${
                       isMe 
@@ -575,7 +619,7 @@ export default function ChatRoom({
 
       {/* Reply Banner */}
       {replyingTo && (
-        <div className="px-4 py-2 bg-surface/90 border-t border-white/10 flex items-center justify-between text-xs z-10">
+        <div className="flex-shrink-0 px-4 py-2 bg-surface/90 border-t border-white/10 flex items-center justify-between text-xs z-10">
           <div className="truncate flex items-center gap-2">
             <Reply size={14} className="text-primary" />
             <span className="text-text-secondary">Replying to <b className="text-text">{replyingTo.senderName}</b>:</span>
@@ -589,14 +633,16 @@ export default function ChatRoom({
         </div>
       )}
 
-      {/* Input Bar / Voice Recorder Bar */}
-      <div className="p-3 border-t border-white/10 bg-surface/70 backdrop-blur-md z-20">
+      {/* =======================================================
+          BOTTOM INPUT BAR (Fixed / Sticky at Bottom of Chat)
+          ======================================================= */}
+      <div className="flex-shrink-0 p-2.5 sm:p-3 border-t border-white/10 bg-surface/85 backdrop-blur-xl z-20">
         {isRecording ? (
-          /* Voice Recording Active Bar (WhatsApp style) */
-          <div className="flex items-center justify-between gap-3 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2.5 animate-pulse">
+          /* Voice Recording Active Bar */
+          <div className="flex items-center justify-between gap-3 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2 animate-pulse">
             <div className="flex items-center gap-2.5 text-red-400">
               <span className="w-3 h-3 rounded-full bg-red-500 animate-ping"></span>
-              <span className="font-semibold text-sm">Recording Voice Note...</span>
+              <span className="font-semibold text-sm">Recording...</span>
               <span className="font-mono text-sm font-bold ml-2">
                 0:{recordingSeconds < 10 ? '0' : ''}{recordingSeconds}
               </span>
@@ -622,14 +668,14 @@ export default function ChatRoom({
             </div>
           </div>
         ) : (
-          /* Standard Input Bar (with Attach Image, Text, and Mic) */
+          /* Standard Input Bar */
           <form onSubmit={handleSendMessage} className="flex items-center gap-2">
             {/* Attach Image Button */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploadingImage}
-              className="p-3 rounded-xl bg-white/10 hover:bg-white/15 text-text-secondary hover:text-primary transition-colors flex-shrink-0 disabled:opacity-40"
+              className="p-2.5 sm:p-3 rounded-xl bg-white/10 hover:bg-white/15 text-text-secondary hover:text-primary transition-colors flex-shrink-0 disabled:opacity-40"
               title="Send Photo"
             >
               <Paperclip size={18} />
@@ -641,14 +687,14 @@ export default function ChatRoom({
               placeholder="Type a message..."
               value={inputText}
               onChange={handleInputChange}
-              className="flex-1 px-4 py-3 bg-white/10 border border-white/15 rounded-xl focus:outline-none focus:border-primary text-text placeholder:text-white/50 text-sm shadow-inner"
+              className="flex-1 px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white/10 border border-white/15 rounded-xl focus:outline-none focus:border-primary text-text placeholder:text-white/50 text-sm shadow-inner"
             />
 
-            {/* Action Button: Send if text present, otherwise Mic */}
+            {/* Action Button: Send or Mic */}
             {inputText.trim() ? (
               <button 
                 type="submit"
-                className="p-3 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:opacity-90 active:scale-95 transition-all shadow-lg flex-shrink-0"
+                className="p-2.5 sm:p-3 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:opacity-90 active:scale-95 transition-all shadow-lg flex-shrink-0"
                 title="Send message"
               >
                 <Send size={18} />
@@ -657,8 +703,8 @@ export default function ChatRoom({
               <button
                 type="button"
                 onClick={startRecording}
-                className="p-3 bg-white/10 hover:bg-primary/20 text-text-secondary hover:text-primary rounded-xl transition-all shadow active:scale-95 flex-shrink-0"
-                title="Hold or tap to record voice note"
+                className="p-2.5 sm:p-3 bg-white/10 hover:bg-primary/20 text-text-secondary hover:text-primary rounded-xl transition-all shadow active:scale-95 flex-shrink-0"
+                title="Record voice note"
               >
                 <Mic size={18} />
               </button>
@@ -670,7 +716,7 @@ export default function ChatRoom({
       {/* Fullscreen Image Preview Lightbox */}
       {previewImage && (
         <div 
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
           onClick={() => setPreviewImage(null)}
         >
           <button 
