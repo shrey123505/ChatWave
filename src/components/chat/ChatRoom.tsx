@@ -19,7 +19,8 @@ import {
   Trash2, 
   Smile, 
   Reply, 
-  X
+  X,
+  Info
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -138,37 +139,54 @@ export default function ChatRoom({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-background/50 relative">
-      {/* Chat Header */}
-      <div className="p-3.5 border-b border-white/10 flex items-center justify-between bg-surface/60 backdrop-blur-md z-10">
-        <div className="flex items-center gap-3">
+    <div className="flex-1 flex flex-col h-full h-[100dvh] bg-background/50 relative overflow-hidden">
+      {/* Instagram-Style Top Header Bar */}
+      <div className="p-3 md:p-3.5 border-b border-white/10 flex items-center justify-between bg-surface/80 backdrop-blur-xl z-20 shadow-sm">
+        <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
           <button 
             onClick={onBack} 
-            className="md:hidden p-2 rounded-full hover:bg-white/10 text-white transition-colors"
+            className="p-2 -ml-1 rounded-full hover:bg-white/10 text-white transition-colors flex-shrink-0"
             title="Back to contacts"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft size={22} />
           </button>
           
+          {/* Clickable Profile Area (Like Instagram DM Header) */}
           <div 
             onClick={onViewProfile} 
-            className="flex items-center gap-3 cursor-pointer group"
+            className="flex items-center gap-3 cursor-pointer group flex-1 min-w-0"
           >
-            <div className="w-10 h-10 rounded-full bg-primary/20 overflow-hidden border border-white/10 flex-shrink-0">
-              {activeUser.photoURL ? (
-                <img src={activeUser.photoURL} alt={activeUser.name} className="w-full h-full object-cover" />
-              ) : (
-                <UserIcon className="w-full h-full p-2 text-primary group-hover:scale-110 transition-transform" />
-              )}
+            <div className="relative flex-shrink-0">
+              <div className="w-10 h-10 rounded-full bg-primary/20 overflow-hidden border-2 border-primary/50 group-hover:scale-105 transition-transform">
+                {activeUser.photoURL ? (
+                  <img src={activeUser.photoURL} alt={activeUser.name} className="w-full h-full object-cover" />
+                ) : (
+                  <UserIcon className="w-full h-full p-2 text-primary" />
+                )}
+              </div>
+              {/* Active Dot */}
+              <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-surface rounded-full"></span>
             </div>
-            <div>
-              <h3 className="font-bold text-text group-hover:text-primary transition-colors flex items-center gap-2">
+
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-text text-sm sm:text-base group-hover:text-primary transition-colors truncate">
                 {activeUser.name || 'User'}
               </h3>
-              <p className="text-xs text-text-secondary">@{activeUser.username || 'user'} • Tap for profile</p>
+              <p className="text-xs text-text-secondary truncate">
+                @{activeUser.username || 'user'} • <span className="text-primary hover:underline">View Profile</span>
+              </p>
             </div>
           </div>
         </div>
+
+        {/* Right Action: Info / Profile button */}
+        <button
+          onClick={onViewProfile}
+          className="p-2 rounded-full hover:bg-white/10 text-text-secondary hover:text-white transition-colors ml-2"
+          title="Profile Info"
+        >
+          <Info size={20} />
+        </button>
       </div>
 
       {/* Messages Scroll Area */}
@@ -300,7 +318,7 @@ export default function ChatRoom({
       )}
 
       {/* Input Bar */}
-      <form onSubmit={handleSendMessage} className="p-3 border-t border-white/10 bg-surface/50 backdrop-blur-md flex items-center gap-2">
+      <form onSubmit={handleSendMessage} className="p-3 border-t border-white/10 bg-surface/60 backdrop-blur-md flex items-center gap-2 z-20">
         <input 
           type="text"
           placeholder="Type a message..."

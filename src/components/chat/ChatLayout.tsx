@@ -7,17 +7,18 @@ import ProfileModal from '../profile/ProfileModal';
 import QRScannerModal from '../settings/QRScannerModal';
 import Sidebar from './Sidebar';
 import ChatRoom from './ChatRoom';
+import MobileBottomNav, { type MobileTab } from './MobileBottomNav';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Toaster, toast } from 'react-hot-toast';
 
 export default function ChatLayout() {
   const { user } = useAuthStore();
+  
+  // Navigation & Modal States
+  const [mobileTab, setMobileTab] = useState<MobileTab>('chats');
   const [showSettings, setShowSettings] = useState(false);
-  
-  // Profile Modal states
-  const [showMyProfile, setShowMyProfile] = useState(false);
+  const [showMyProfileModal, setShowMyProfileModal] = useState(false); // for desktop
   const [viewingProfileUser, setViewingProfileUser] = useState<any | null>(null);
-  
   const [showScanner, setShowScanner] = useState(false);
   const [activeChatUser, setActiveChatUser] = useState<any | null>(null);
 
@@ -47,11 +48,16 @@ export default function ChatLayout() {
   }, [user]);
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden text-text">
+    <div className="flex h-screen h-[100dvh] bg-background overflow-hidden text-text relative">
       <Toaster position="top-center" />
+
+      {/* =========================================
+          DESKTOP VIEW (Side-by-side Layout: md:)
+          ========================================= */}
       
-      {/* Left Panel (Hidden on mobile if a chat is active) */}
-      <div className={`\${activeChatUser ? 'hidden md:flex' : 'flex'} w-full md:w-80 border-r border-white/10 flex-col bg-surface/50 backdrop-blur-md transition-all`}>
+      {/* Desktop Left Sidebar */}
+      <div className="hidden md:flex w-80 lg:w-96 border-r border-white/10 flex-col bg-surface/50 backdrop-blur-md transition-all">
+        {/* Desktop Header */}
         <div className="p-3.5 border-b border-white/10 flex justify-between items-center bg-black/20">
           <h2 className="text-xl font-bold text-primary flex items-center gap-2">
             <MessageSquare size={24} /> ChatWave
@@ -65,7 +71,7 @@ export default function ChatLayout() {
               <ScanLine size={20} />
             </button>
             <button 
-              onClick={() => setShowMyProfile(true)} 
+              onClick={() => setShowMyProfileModal(true)} 
               className="p-2 rounded-full hover:bg-white/10 text-text-secondary hover:text-white transition-colors" 
               title="My Profile"
             >
@@ -87,13 +93,18 @@ export default function ChatLayout() {
             </button>
           </div>
         </div>
-        
-        {/* Search & Contacts List - Click opens Profile modal */}
-        <Sidebar onSelectUser={(selected) => setViewingProfileUser(selected)} />
+
+        {/* Desktop Contacts & Search */}
+        <div className="flex-1 overflow-hidden">
+          <Sidebar 
+            mode="all"
+            onSelectUser={(selected) => setViewingProfileUser(selected)} 
+          />
+        </div>
       </div>
 
-      {/* Main Chat Area (Hidden on mobile if no active chat) */}
-      <div className={`\${!activeChatUser ? 'hidden md:flex' : 'flex'} flex-1 flex-col bg-background/50 relative transition-all`}>
+      {/* Desktop Main Content Area */}
+      <div className="hidden md:flex flex-1 flex-col bg-background/50 relative">
         {activeChatUser ? (
           <ChatRoom 
             activeUser={activeChatUser} 
@@ -103,7 +114,7 @@ export default function ChatLayout() {
         ) : (
           <div className="flex-1 flex items-center justify-center text-text-secondary flex-col gap-4 p-8 text-center">
             <div className="w-24 h-24 rounded-full bg-surface/50 flex items-center justify-center border border-white/10 shadow-2xl">
-               <MessageSquare size={48} className="text-primary/70" />
+              <MessageSquare size={48} className="text-primary/70" />
             </div>
             <h3 className="text-2xl font-semibold text-text">
               Welcome, {user?.displayName || 'User'}!
@@ -115,13 +126,107 @@ export default function ChatLayout() {
         )}
       </div>
 
+      {/* =========================================
+          MOBILE VIEW (Instagram-style Tabbed Layout)
+          ========================================= */}
+      <div className="md:hidden flex flex-1 flex-col h-full h-[100dvh] w-full overflow-hidden">
+        {activeChatUser ? (
+          /* Full-screen Chat on Mobile (Bottom Bar is hidden inside chat) */
+          <ChatRoom 
+            activeUser={activeChatUser} 
+            onBack={() => setActiveChatUser(null)}
+            onViewProfile={() => setViewingProfileUser(activeChatUser)}
+          />
+        ) : (
+          /* Main Tabbed Mobile Screens */
+          <div className="flex-1 flex flex-col h-full overflow-hidden pb-16">
+            
+            {/* Tab 1: Chats Screen */}
+            {mobileTab === 'chats' && (
+              <div className="flex-1 flex flex-col h-full overflow-hidden">
+                {/* Mobile Header for Chats */}
+                <div className="p-3.5 border-b border-white/10 flex justify-between items-center bg-surface/80 backdrop-blur-md">
+                  <h2 className="text-xl font-bold text-primary flex items-center gap-2">
+                    <MessageSquare size={22} /> ChatWave
+                  </h2>
+                  <div className="flex items-center gap-1">
+                    <button 
+                      onClick={() => setShowSettings(true)} 
+                      className="p-2 rounded-full hover:bg-white/10 text-text-secondary hover:text-white transition-colors" 
+                      title="Settings"
+                    >
+                      <SettingsIcon size={20} />
+                    </button>
+                    <button 
+                      onClick={() => auth.signOut()} 
+                      className="p-2 rounded-full hover:bg-red-500/20 text-red-400 transition-colors" 
+                      title="Logout"
+                    >
+                      <LogOut size={20} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-hidden">
+                  <Sidebar 
+                    mode="all"
+                    onSelectUser={(selected) => setViewingProfileUser(selected)} 
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Tab 2: Dedicated Search / Explore Screen */}
+            {mobileTab === 'search' && (
+              <div className="flex-1 flex flex-col h-full overflow-hidden">
+                <div className="flex-1 overflow-hidden">
+                  <Sidebar 
+                    mode="search"
+                    onSelectUser={(selected) => setViewingProfileUser(selected)} 
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: My Profile Tab (Direct Instagram Profile Screen) */}
+            {mobileTab === 'profile' && (
+              <div className="flex-1 flex flex-col h-full overflow-y-auto">
+                <ProfileModal 
+                  embedded={true}
+                  onOpenSettings={() => setShowSettings(true)}
+                />
+              </div>
+            )}
+
+            {/* Instagram-Style Sticky Bottom Bar on Mobile */}
+            <MobileBottomNav 
+              activeTab={mobileTab}
+              onTabChange={(tab) => setMobileTab(tab)}
+              onOpenScanner={() => setShowScanner(true)}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* =========================================
+          MODALS
+          ========================================= */}
+
       {/* Settings Modal (Theme & QR Generator) */}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       
-      {/* View Own Profile */}
-      {showMyProfile && <ProfileModal onClose={() => setShowMyProfile(false)} />}
+      {/* Desktop Own Profile Modal */}
+      {showMyProfileModal && (
+        <ProfileModal 
+          onClose={() => setShowMyProfileModal(false)} 
+          onOpenSettings={() => {
+            setShowMyProfileModal(false);
+            setShowSettings(true);
+          }}
+        />
+      )}
       
-      {/* View Selected User Profile */}
+      {/* View Other User's Profile Modal (Opened from Search, Contacts, or Chat Header) */}
       {viewingProfileUser && (
         <ProfileModal 
           initialProfile={viewingProfileUser}
@@ -134,7 +239,7 @@ export default function ChatLayout() {
         />
       )}
 
-      {/* QR Code Camera Scanner */}
+      {/* QR Code Camera Scanner Modal */}
       {showScanner && (
         <QRScannerModal 
           onClose={() => setShowScanner(false)} 

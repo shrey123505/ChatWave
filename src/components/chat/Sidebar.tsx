@@ -1,16 +1,22 @@
 import { useState, useEffect } from 'react';
 import { collection, query, getDocs, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Search, UserPlus, User as UserIcon, Users } from 'lucide-react';
+import { Search, UserPlus, User as UserIcon, Users, Sparkles } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 
-export default function Sidebar({ onSelectUser }: { onSelectUser: (user: any) => void }) {
+export default function Sidebar({ 
+  onSelectUser,
+  mode = 'all'
+}: { 
+  onSelectUser: (user: any) => void;
+  mode?: 'all' | 'chats' | 'search';
+}) {
   const { user } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load existing users on mount so the user isn't faced with an empty screen!
+  // Load existing users on mount
   useEffect(() => {
     const loadUsers = async () => {
       setLoading(true);
@@ -41,46 +47,59 @@ export default function Sidebar({ onSelectUser }: { onSelectUser: (user: any) =>
 
   return (
     <div className="flex flex-col h-full bg-surface/30">
-      {/* Search Bar with high visibility */}
-      <div className="p-4 border-b border-white/10 bg-black/20">
-        <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-white/70">
-            <Search size={18} />
+      {/* Search Bar */}
+      {(mode === 'all' || mode === 'search') && (
+        <div className="p-4 border-b border-white/10 bg-black/20">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-white/70">
+              <Search size={18} />
+            </div>
+            <input 
+              type="text" 
+              placeholder={mode === 'search' ? "Search anyone by name or @username..." : "Search name or @username..."}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus={mode === 'search'}
+              className="w-full pl-10 pr-4 py-2.5 bg-white/10 border border-white/20 rounded-xl focus:outline-none focus:border-primary text-white placeholder:text-white/60 transition-colors text-sm shadow-inner"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-white/50 hover:text-white"
+              >
+                ×
+              </button>
+            )}
           </div>
-          <input 
-            type="text" 
-            placeholder="Search name or @username..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white/10 border border-white/20 rounded-xl focus:outline-none focus:border-primary text-white placeholder:text-white/60 transition-colors text-sm shadow-inner"
-          />
-          {searchQuery && (
-            <button 
-              onClick={() => setSearchQuery('')}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-white/50 hover:text-white"
-            >
-              ×
-            </button>
-          )}
         </div>
-      </div>
+      )}
       
       {/* List of Users */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
-          <Users size={14} />
-          {searchQuery ? 'Search Results' : 'Available Contacts'}
+        <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            {mode === 'search' ? <Sparkles size={14} className="text-primary" /> : <Users size={14} />}
+            {searchQuery 
+              ? 'Search Results' 
+              : mode === 'search' 
+                ? 'Discover People' 
+                : 'Available Contacts'
+            }
+          </span>
+          <span className="text-[10px] text-text-secondary/70">
+            {filteredUsers.length} {filteredUsers.length === 1 ? 'user' : 'users'}
+          </span>
         </div>
 
         {loading ? (
-          <div className="text-center p-6 text-text-secondary text-sm flex flex-col items-center gap-2">
+          <div className="text-center p-8 text-text-secondary text-sm flex flex-col items-center gap-2">
             <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-primary"></div>
             Loading contacts...
           </div>
         ) : filteredUsers.length === 0 ? (
           <div className="text-center p-8 text-text-secondary text-sm space-y-2">
-            <UserPlus size={32} className="mx-auto opacity-40 text-primary" />
-            <p className="font-medium">No users found</p>
+            <UserPlus size={36} className="mx-auto opacity-40 text-primary" />
+            <p className="font-medium text-text">No users found</p>
             <p className="text-xs opacity-70">
               {searchQuery ? `No user matching "${searchQuery}"` : 'No other users registered yet.'}
             </p>
@@ -100,7 +119,7 @@ export default function Sidebar({ onSelectUser }: { onSelectUser: (user: any) =>
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <h4 className="font-semibold text-text truncate group-hover:text-primary transition-colors">
+                <h4 className="font-semibold text-text truncate group-hover:text-primary transition-colors text-sm">
                   {u.name || 'User'}
                 </h4>
                 <p className="text-xs text-text-secondary truncate">
