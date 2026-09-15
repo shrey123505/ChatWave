@@ -7,7 +7,6 @@ import {
   deleteDoc, 
   increment 
 } from 'firebase/firestore';
-import { updateProfile } from 'firebase/auth';
 import { db, auth } from '../../lib/firebase';
 import { 
   X, 
@@ -142,10 +141,8 @@ export default function ProfileModal({
       // Direct Firestore update - superfast, zero external storage dependency
       await updateDoc(doc(db, 'users', user.uid), { photoURL: croppedBase64 });
 
-      if (auth.currentUser) {
-        await updateProfile(auth.currentUser, { photoURL: croppedBase64 });
-        setUser({ ...auth.currentUser, photoURL: croppedBase64 });
-      }
+      // Update local client store (avoids Firebase Auth 2048-char HTTP URL limit error)
+      setUser({ ...user, photoURL: croppedBase64 } as any);
 
       setProfile((prev: any) => ({ ...prev, photoURL: croppedBase64 }));
       toast.success('Profile picture updated!', { id: toastId });
