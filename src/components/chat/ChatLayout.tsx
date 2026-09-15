@@ -11,7 +11,17 @@ import {
   updateDoc, 
   serverTimestamp 
 } from 'firebase/firestore';
-import { LogOut, Settings as SettingsIcon, MessageSquare, UserCircle, ScanLine } from 'lucide-react';
+import { 
+  LogOut, 
+  Settings as SettingsIcon, 
+  MessageSquare, 
+  UserCircle, 
+  ScanLine,
+  ShieldCheck,
+  Lock,
+  Sparkles,
+  Phone
+} from 'lucide-react';
 import SettingsModal from '../settings/SettingsModal';
 import ProfileModal from '../profile/ProfileModal';
 import QRScannerModal from '../settings/QRScannerModal';
@@ -20,7 +30,12 @@ import IncomingCallModal from '../call/IncomingCallModal';
 import Sidebar from './Sidebar';
 import ChatRoom from './ChatRoom';
 import MobileBottomNav, { type MobileTab } from './MobileBottomNav';
+import StoriesBar, { type StoryGroup } from '../stories/StoriesBar';
+import CreateStoryModal from '../stories/CreateStoryModal';
+import StoryViewerModal from '../stories/StoryViewerModal';
 import { usePresence } from '../../hooks/usePresence';
+import { useGlobalNotifications } from '../../hooks/useGlobalNotifications';
+import { showSystemNotification } from '../../utils/notification';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Toaster, toast } from 'react-hot-toast';
 
@@ -35,6 +50,19 @@ export default function ChatLayout() {
   const [viewingProfileUser, setViewingProfileUser] = useState<any | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [activeChatUser, setActiveChatUser] = useState<any | null>(null);
+
+  // Stories States
+  const [showCreateStory, setShowCreateStory] = useState(false);
+  const [activeStoryGroup, setActiveStoryGroup] = useState<StoryGroup | null>(null);
+
+  // Global Notification Hub: plays soft chime and shows system alert when message arrives
+  useGlobalNotifications({
+    activeChatUid: activeChatUser?.uid || null,
+    onSelectChat: (chatUser) => {
+      setViewingProfileUser(null);
+      setActiveChatUser(chatUser);
+    }
+  });
 
   // Audio / Video Call States
   const [activeCall, setActiveCall] = useState<{
@@ -59,8 +87,15 @@ export default function ChatLayout() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
-          const callData = { id: change.doc.id, ...change.doc.data() };
+          const callData: any = { id: change.doc.id, ...change.doc.data() };
           setIncomingCall(callData);
+          if (document.hidden) {
+            showSystemNotification(
+              `📞 Incoming ${callData.callType === 'video' ? 'Video' : 'Audio'} Call`,
+              `${callData.callerName || 'Someone'} is calling you... Click to answer`,
+              callData.callerPhotoURL || '/favicon.svg'
+            );
+          }
         } else if (change.type === 'modified' || change.type === 'removed') {
           const status = change.doc.data().status;
           if (status === 'ended' || status === 'declined') {
@@ -202,6 +237,12 @@ export default function ChatLayout() {
           </div>
         </div>
 
+        {/* Desktop Stories Bar */}
+        <StoriesBar 
+          onOpenCreate={() => setShowCreateStory(true)}
+          onViewStory={(group) => setActiveStoryGroup(group)}
+        />
+
         {/* Desktop Contacts & Search */}
         <div className="flex-1 overflow-hidden">
           <Sidebar 
@@ -221,16 +262,48 @@ export default function ChatLayout() {
             onStartCall={handleStartCall}
           />
         ) : (
-          <div className="flex-1 flex items-center justify-center text-text-secondary flex-col gap-4 p-8 text-center">
-            <div className="w-24 h-24 rounded-full bg-surface/50 flex items-center justify-center border border-white/10 shadow-2xl">
-              <MessageSquare size={48} className="text-primary/70" />
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center select-none relative overflow-hidden">
+            {/* Ambient Background Aura */}
+            <div className="absolute w-96 h-96 rounded-full bg-primary/10 filter blur-3xl pointer-events-none -top-12" />
+            <div className="absolute w-96 h-96 rounded-full bg-indigo-500/10 filter blur-3xl pointer-events-none -bottom-12" />
+
+            <div className="relative z-10 flex flex-col items-center max-w-md">
+              {/* Branded Emblem */}
+              <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-primary/25 via-primary/15 to-transparent border border-white/10 flex items-center justify-center shadow-2xl mb-6 relative">
+                <div className="absolute inset-0 rounded-3xl bg-primary/10 animate-pulse pointer-events-none" />
+                <MessageSquare size={38} className="text-primary relative z-10" />
+              </div>
+
+              <h2 className="text-2xl font-bold text-text tracking-tight mb-2">
+                ChatWave for Web
+              </h2>
+
+              <p className="text-sm text-text-secondary leading-relaxed mb-6">
+                Send and receive messages with zero lag. High-definition peer-to-peer audio and video calling right inside your browser.
+              </p>
+
+              {/* Feature Badges */}
+              <div className="flex flex-wrap items-center justify-center gap-2 mb-8">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-white/5 border border-white/[0.08] text-text-secondary">
+                  <ShieldCheck size={14} className="text-emerald-400" />
+                  End-to-End Encrypted
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-white/5 border border-white/[0.08] text-text-secondary">
+                  <Sparkles size={14} className="text-amber-400" />
+                  Real-Time Presence
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-white/5 border border-white/[0.08] text-text-secondary">
+                  <Phone size={14} className="text-blue-400" />
+                  P2P Audio & Video
+                </span>
+              </div>
+
+              {/* Privacy Footer Hint */}
+              <div className="text-xs text-text-secondary/70 flex items-center gap-1.5">
+                <Lock size={12} />
+                <span>Your personal messages and calls are completely private.</span>
+              </div>
             </div>
-            <h3 className="text-2xl font-semibold text-text">
-              Welcome, {user?.displayName || 'User'}!
-            </h3>
-            <p className="max-w-md text-sm text-text-secondary">
-              Select a contact on the left to start chatting, voice calling, or video calling.
-            </p>
           </div>
         )}
       </div>
@@ -277,6 +350,12 @@ export default function ChatLayout() {
                     </button>
                   </div>
                 </div>
+
+                {/* Mobile Stories Bar */}
+                <StoriesBar 
+                  onOpenCreate={() => setShowCreateStory(true)}
+                  onViewStory={(group) => setActiveStoryGroup(group)}
+                />
 
                 <div className="flex-1 overflow-hidden">
                   <Sidebar 
@@ -389,6 +468,19 @@ export default function ChatLayout() {
               toast.error("Error loading user: " + err.message);
             });
           }} 
+        />
+      )}
+
+      {/* Create 24h Story Modal */}
+      {showCreateStory && (
+        <CreateStoryModal onClose={() => setShowCreateStory(false)} />
+      )}
+
+      {/* View 24h Story Modal */}
+      {activeStoryGroup && (
+        <StoryViewerModal 
+          group={activeStoryGroup} 
+          onClose={() => setActiveStoryGroup(null)} 
         />
       )}
     </div>

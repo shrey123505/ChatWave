@@ -41,26 +41,43 @@
     bottom: 0;
   }
 
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    letter-spacing: -0.011em;
     @apply bg-background text-text antialiased;
     background-image: radial-gradient(circle at 50% -20%, var(--color-surface) 0%, var(--color-background) 100%);
   }
 }
 
 .glass-panel {
-  @apply bg-white/5 backdrop-blur-lg border border-white/10 shadow-xl;
+  background-color: rgba(30, 41, 59, 0.85);
+  @apply backdrop-blur-xl border border-white/[0.08] shadow-2xl;
+}
+
+/* Hide scrollbar for stories and horizontal lists */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-white/20 rounded-full;
+  @apply bg-white/15 rounded-full;
 }
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-white/30;
+  @apply bg-white/25;
 }

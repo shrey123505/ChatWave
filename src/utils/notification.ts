@@ -84,17 +84,31 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return false;
 }
 
-// Show browser desktop/mobile push notification
-export function showSystemNotification(title: string, body: string, icon = '/favicon.svg') {
+// Show browser desktop/mobile push notification with onClick handler
+export function showSystemNotification(
+  title: string, 
+  body: string, 
+  icon = '/favicon.svg',
+  onClick?: () => void
+) {
   if (!('Notification' in window)) return;
   if (Notification.permission === 'granted') {
     try {
-      new Notification(title, {
+      const notif = new Notification(title, {
         body,
         icon,
         badge: icon,
-        tag: 'chatwave-msg'
+        tag: 'chatwave-' + Date.now()
       });
+      if (onClick) {
+        notif.onclick = () => {
+          try {
+            window.focus();
+          } catch {}
+          onClick();
+          notif.close();
+        };
+      }
     } catch (e) {
       console.warn("Notification error:", e);
     }

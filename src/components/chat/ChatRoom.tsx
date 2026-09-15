@@ -274,6 +274,18 @@ export default function ChatRoom({
         replyTo: replySnapshot,
         createdAt: serverTimestamp()
       });
+
+      // Update receiver's inbox for global notifications
+      if (activeUser?.uid) {
+        setDoc(doc(db, 'users', activeUser.uid, 'inbox', user.uid), {
+          senderId: user.uid,
+          senderName: user.displayName || 'User',
+          senderUsername: (user as any).username || '',
+          senderPhotoURL: user.photoURL || '',
+          text: trimmed,
+          timestamp: Date.now()
+        }, { merge: true }).catch(() => {});
+      }
     } catch (err: any) {
       console.error("Failed to send message:", err);
       toast.error("Failed to send: " + err.message);
@@ -312,6 +324,18 @@ export default function ChatRoom({
         replyTo: replySnapshot,
         createdAt: serverTimestamp()
       });
+
+      // Update receiver's inbox for global notifications
+      if (activeUser?.uid) {
+        setDoc(doc(db, 'users', activeUser.uid, 'inbox', user.uid), {
+          senderId: user.uid,
+          senderName: user.displayName || 'User',
+          senderUsername: (user as any).username || '',
+          senderPhotoURL: user.photoURL || '',
+          text: '📷 Photo',
+          timestamp: Date.now()
+        }, { merge: true }).catch(() => {});
+      }
 
       toast.success("Photo sent!", { id: toastId });
     } catch (err: any) {
@@ -389,6 +413,19 @@ export default function ChatRoom({
             seen: false,
             createdAt: serverTimestamp()
           });
+
+          // Update receiver's inbox for global notifications
+          if (activeUser?.uid) {
+            setDoc(doc(db, 'users', activeUser.uid, 'inbox', user.uid), {
+              senderId: user.uid,
+              senderName: user.displayName || 'User',
+              senderUsername: (user as any).username || '',
+              senderPhotoURL: user.photoURL || '',
+              text: '🎙️ Voice note',
+              timestamp: Date.now()
+            }, { merge: true }).catch(() => {});
+          }
+
           toast.success("Voice note sent!");
         } catch (err: any) {
           toast.error("Failed to send voice note: " + err.message);
