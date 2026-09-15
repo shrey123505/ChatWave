@@ -8,8 +8,7 @@ import {
   increment 
 } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage, auth } from '../../lib/firebase';
+import { db, auth } from '../../lib/firebase';
 import { 
   X, 
   Camera, 
@@ -28,10 +27,10 @@ import {
   EyeOff
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
-import { compressImage } from '../../utils/imageCompressor';
 import { formatPresence } from '../../hooks/usePresence';
 import EditProfileModal from './EditProfileModal';
 import ReportUserModal from '../chat/ReportUserModal';
+import AvatarCropModal from './AvatarCropModal';
 import toast from 'react-hot-toast';
 
 export default function ProfileModal({ 
@@ -54,6 +53,9 @@ export default function ProfileModal({
   const [loading, setLoading] = useState(!initialProfile);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  
+  // Photo Upload & Crop States
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   
   // Follow / Block States
   const [isFollowing, setIsFollowing] = useState(false);
@@ -116,38 +118,40 @@ export default function ProfileModal({
     return () => { isMounted = false; };
   }, [resolvedUid, initialProfile, isSelf, user?.uid]);
 
-  // Photo Upload
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // File Select -> Opens Circular Crop Modal
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!isSelf) return;
     const file = e.target.files?.[0];
-    if (!file || !user) return;
-    
-    setUploading(true);
-    const toastId = toast.loading('Uploading photo...');
-    try {
-      const base64Photo = await compressImage(file, 250, 250, 0.75);
-      let finalPhotoUrl = base64Photo;
+    if (!file) return;
 
-      try {
-        const storageRef = ref(storage, `profiles/${user.uid}`);
-        await uploadBytes(storageRef, file);
-        finalPhotoUrl = await getDownloadURL(storageRef);
-      } catch (storageErr) {
-        console.warn("Storage upload bypassed, using direct store:", storageErr);
-      }
-      
-      await updateDoc(doc(db, 'users', user.uid), { photoURL: finalPhotoUrl });
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImageSrc(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Save Cropped Circular Base64 Photo (Instant < 200ms save!)
+  const handleSaveCroppedPhoto = async (croppedBase64: string) => {
+    if (!user) return;
+    setUploading(true);
+    const toastId = toast.loading('Saving profile picture...');
+
+    try {
+      // Direct Firestore update - superfast, zero external storage dependency
+      await updateDoc(doc(db, 'users', user.uid), { photoURL: croppedBase64 });
 
       if (auth.currentUser) {
-        await updateProfile(auth.currentUser, { photoURL: finalPhotoUrl });
-        setUser({ ...auth.currentUser, photoURL: finalPhotoUrl });
+        await updateProfile(auth.currentUser, { photoURL: croppedBase64 });
+        setUser({ ...auth.currentUser, photoURL: croppedBase64 });
       }
 
-      setProfile((prev: any) => ({ ...prev, photoURL: finalPhotoUrl }));
-      toast.success('Profile photo updated!', { id: toastId });
+      setProfile((prev: any) => ({ ...prev, photoURL: croppedBase64 }));
+      toast.success('Profile picture updated!', { id: toastId });
     } catch (err: any) {
-      console.error(err);
-      toast.error('Upload failed: ' + err.message, { id: toastId });
+      console.error("Failed to save profile picture:", err);
+      toast.error('Failed to update picture: ' + err.message, { id: toastId });
     } finally {
       setUploading(false);
     }
@@ -331,7 +335,7 @@ export default function ProfileModal({
                 <input 
                   type="file" 
                   ref={fileInputRef} 
-                  onChange={handlePhotoUpload} 
+                  onChange={handleFileSelect} 
                   accept="image/*" 
                   className="hidden" 
                   disabled={uploading} 
@@ -521,6 +525,15 @@ export default function ProfileModal({
         <ReportUserModal
           targetUser={profile}
           onClose={() => setShowReportModal(false)}
+        />
+      )}
+
+      {/* Avatar Circular Crop Modal */}
+      {cropImageSrc && (
+        <AvatarCropModal
+          imageSrc={cropImageSrc}
+          onClose={() => setCropImageSrc(null)}
+          onSave={handleSaveCroppedPhoto}
         />
       )}
     </div>
