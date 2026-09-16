@@ -78,7 +78,10 @@ export default function ChatRoom({
   onViewProfile: () => void;
   onStartCall: (type: 'video' | 'audio') => void;
 }) {
-  const { user } = useAuthStore();
+  const { user, userProfile } = useAuthStore();
+  const myPhoto = userProfile?.photoURL || user?.photoURL || '';
+  const myName = userProfile?.name || user?.displayName || 'User';
+  const myUsername = userProfile?.username || (user as any)?.username || '';
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -157,8 +160,8 @@ export default function ChatRoom({
       await addDoc(collection(db, 'users', activeUser.uid, 'inbox'), {
         type: 'follow',
         senderId: user.uid,
-        senderName: user.displayName || user.email || 'Someone',
-        senderPhotoURL: user.photoURL || '',
+        senderName: myName,
+        senderPhotoURL: myPhoto,
         text: 'Started following you',
         timestamp: Date.now()
       }).catch(() => {});
@@ -311,9 +314,9 @@ export default function ChatRoom({
     const peerConvRef = doc(db, 'users', activeUser.uid, 'conversations', user.uid);
     setDoc(peerConvRef, {
       peerUid: user.uid,
-      peerName: user.displayName || 'User',
-      peerUsername: (user as any).username || '',
-      peerPhotoURL: user.photoURL || '',
+      peerName: myName,
+      peerUsername: myUsername,
+      peerPhotoURL: myPhoto,
       isPrivate: false,
       lastMessage: previewText,
       lastMessageType: messageType,
@@ -370,9 +373,9 @@ export default function ChatRoom({
       if (activeUser?.uid) {
         setDoc(doc(db, 'users', activeUser.uid, 'inbox', user.uid), {
           senderId: user.uid,
-          senderName: user.displayName || 'User',
-          senderUsername: (user as any).username || '',
-          senderPhotoURL: user.photoURL || '',
+          senderName: myName,
+          senderUsername: myUsername,
+          senderPhotoURL: myPhoto,
           text: trimmed,
           timestamp: Date.now()
         }, { merge: true }).catch(() => {});
@@ -423,9 +426,9 @@ export default function ChatRoom({
       if (activeUser?.uid) {
         setDoc(doc(db, 'users', activeUser.uid, 'inbox', user.uid), {
           senderId: user.uid,
-          senderName: user.displayName || 'User',
-          senderUsername: (user as any).username || '',
-          senderPhotoURL: user.photoURL || '',
+          senderName: myName,
+          senderUsername: myUsername,
+          senderPhotoURL: myPhoto,
           text: '📷 Photo',
           timestamp: Date.now()
         }, { merge: true }).catch(() => {});
@@ -515,9 +518,9 @@ export default function ChatRoom({
           if (activeUser?.uid) {
             setDoc(doc(db, 'users', activeUser.uid, 'inbox', user.uid), {
               senderId: user.uid,
-              senderName: user.displayName || 'User',
-              senderUsername: (user as any).username || '',
-              senderPhotoURL: user.photoURL || '',
+              senderName: myName,
+              senderUsername: myUsername,
+              senderPhotoURL: myPhoto,
               text: '🎙️ Voice note',
               timestamp: Date.now()
             }, { merge: true }).catch(() => {});

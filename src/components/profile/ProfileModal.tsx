@@ -34,22 +34,22 @@ import ReportUserModal from '../chat/ReportUserModal';
 import AvatarCropModal from './AvatarCropModal';
 import toast from 'react-hot-toast';
 
-export default function ProfileModal({ 
-  onClose, 
+export default function ProfileModal({
   initialProfile,
-  targetUid, 
+  targetUid,
+  onClose,
   onStartChat,
   onOpenSettings,
   embedded = false
-}: { 
-  onClose?: () => void; 
+}: {
   initialProfile?: any;
   targetUid?: string;
+  onClose?: () => void;
   onStartChat?: (user: any) => void;
   onOpenSettings?: () => void;
   embedded?: boolean;
 }) {
-  const { user, setUser } = useAuthStore();
+  const { user, setUser, userProfile, setUserProfile } = useAuthStore();
   const [profile, setProfile] = useState<any>(initialProfile || null);
   const [loading, setLoading] = useState(!initialProfile);
   const [error, setError] = useState<string | null>(null);
@@ -145,6 +145,7 @@ export default function ProfileModal({
 
       // Update local client store (avoids Firebase Auth 2048-char HTTP URL limit error)
       setUser({ ...user, photoURL: croppedBase64 } as any);
+      setUserProfile({ ...userProfile, photoURL: croppedBase64 });
 
       setProfile((prev: any) => ({ ...prev, photoURL: croppedBase64 }));
       toast.success('Profile picture updated!', { id: toastId });
@@ -182,8 +183,8 @@ export default function ProfileModal({
         await addDoc(collection(db, 'users', resolvedUid, 'inbox'), {
           type: 'follow',
           senderId: user.uid,
-          senderName: user.displayName || user.email || 'Someone',
-          senderPhotoURL: user.photoURL || '',
+          senderName: userProfile?.name || user.displayName || user.email || 'Someone',
+          senderPhotoURL: userProfile?.photoURL || user.photoURL || '',
           text: 'Started following you',
           timestamp: Date.now()
         }).catch(() => {});

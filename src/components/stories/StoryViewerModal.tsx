@@ -12,7 +12,7 @@ interface StoryViewerModalProps {
 }
 
 export default function StoryViewerModal({ group, onClose }: StoryViewerModalProps) {
-  const { user } = useAuthStore();
+  const { user, userProfile } = useAuthStore();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
@@ -52,8 +52,8 @@ export default function StoryViewerModal({ group, onClose }: StoryViewerModalPro
         await addDoc(collection(db, 'users', group.userId, 'inbox'), {
           type: 'story_like',
           senderId: user.uid,
-          senderName: user.displayName || user.email || 'Someone',
-          senderPhotoURL: user.photoURL || '',
+          senderName: userProfile?.name || user.displayName || user.email || 'Someone',
+          senderPhotoURL: userProfile?.photoURL || user.photoURL || '',
           text: 'Liked your story',
           storyId: currentStory.id,
           timestamp: Date.now()

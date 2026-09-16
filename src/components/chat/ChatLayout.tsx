@@ -140,8 +140,8 @@ export default function ChatLayout() {
     try {
       const callDocRef = await addDoc(collection(db, 'calls'), {
         callerId: user.uid,
-        callerName: user.displayName || user.email || 'Friend',
-        callerPhotoURL: user.photoURL || '',
+        callerName: userProfile?.name || user.displayName || user.email || 'Friend',
+        callerPhotoURL: userProfile?.photoURL || user.photoURL || '',
         receiverId: activeChatUser.uid,
         receiverName: activeChatUser.name || 'User',
         receiverPhotoURL: activeChatUser.photoURL || '',

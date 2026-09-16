@@ -10,7 +10,7 @@ interface CreateStoryModalProps {
 }
 
 export default function CreateStoryModal({ onClose }: CreateStoryModalProps) {
-  const { user } = useAuthStore();
+  const { user, userProfile } = useAuthStore();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -74,9 +74,9 @@ export default function CreateStoryModal({ onClose }: CreateStoryModalProps) {
 
       await addDoc(collection(db, 'stories'), {
         userId: user.uid,
-        userName: user.displayName || 'User',
-        userUsername: (user as any).username || user.displayName || 'user',
-        userPhotoURL: user.photoURL || '',
+        userName: userProfile?.name || user.displayName || 'User',
+        userUsername: userProfile?.username || (user as any).username || 'user',
+        userPhotoURL: userProfile?.photoURL || user.photoURL || '',
         mediaUrl: selectedImage,
         caption: caption.trim(),
         createdAt: new Date().toISOString(),

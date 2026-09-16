@@ -12,7 +12,8 @@ export default function MobileBottomNav({
   onTabChange: (tab: MobileTab) => void;
   onOpenScanner: () => void;
 }) {
-  const { user } = useAuthStore();
+  const { user, userProfile } = useAuthStore();
+  const avatarUrl = userProfile?.photoURL || user?.photoURL;
 
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-xl border-t border-white/10 px-4 py-2 flex items-center justify-around text-xs shadow-2xl">
@@ -56,9 +57,9 @@ export default function MobileBottomNav({
           activeTab === 'profile' ? 'text-primary scale-105 font-bold' : 'text-text-secondary hover:text-text'
         }`}
       >
-        {user?.photoURL ? (
+        {avatarUrl ? (
           <div className={`w-6 h-6 rounded-full overflow-hidden border ${activeTab === 'profile' ? 'border-primary ring-2 ring-primary/40' : 'border-white/20'}`}>
-            <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
+            <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
           </div>
         ) : (
           <UserCircle size={22} className={activeTab === 'profile' ? 'stroke-[2.5]' : 'stroke-[1.8]'} />

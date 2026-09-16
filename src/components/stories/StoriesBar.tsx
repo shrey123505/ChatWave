@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Plus, User as UserIcon } from 'lucide-react';
@@ -33,17 +33,34 @@ interface StoriesBarProps {
 }
 
 export default function StoriesBar({ onOpenCreate, onViewStory }: StoriesBarProps) {
-  const { user } = useAuthStore();
+  const { user, userProfile } = useAuthStore();
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
   const [myGroup, setMyGroup] = useState<StoryGroup | null>(null);
+  const [followingUids, setFollowingUids] = useState<Set<string>>(new Set());
 
+  // 1. Subscribe to Current User's Following List (Privacy Shield)
   useEffect(() => {
-    if (!user) return;
+    if (!user?.uid) return;
 
-    // Real-time listener for active stories
+    const followingRef = collection(db, 'users', user.uid, 'following');
+    const unsub = onSnapshot(followingRef, (snapshot) => {
+      const uids = new Set<string>();
+      snapshot.docs.forEach((d) => uids.add(d.id));
+      setFollowingUids(uids);
+    }, (err) => {
+      console.warn("Error subscribing to following list for stories:", err);
+    });
+
+    return () => unsub();
+  }, [user?.uid]);
+
+  // 2. Real-time listener for active stories
+  useEffect(() => {
+    if (!user?.uid) return;
+
     const q = query(collection(db, 'stories'));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
       const now = Date.now();
       const activeStories: Story[] = [];
 
@@ -69,28 +86,51 @@ export default function StoriesBar({ onOpenCreate, onViewStory }: StoriesBarProp
         groupsMap.set(s.userId, existing);
       });
 
-      // Split into own group and other users' groups
+      // Split into own group and followed users' groups
       let userOwnGroup: StoryGroup | null = null;
       const otherGroups: StoryGroup[] = [];
 
-      groupsMap.forEach((stories, uId) => {
+      // Check each group
+      for (const [uId, stories] of groupsMap.entries()) {
         const first = stories[0];
-        const hasUnseen = stories.some((s) => !s.viewers.includes(user.uid));
-        const group: StoryGroup = {
-          userId: uId,
-          userName: first.userName || 'User',
-          userUsername: first.userUsername,
-          userPhotoURL: first.userPhotoURL,
-          stories,
-          hasUnseen
-        };
 
         if (uId === user.uid) {
-          userOwnGroup = group;
-        } else {
-          otherGroups.push(group);
+          // Current User's own story group
+          userOwnGroup = {
+            userId: uId,
+            userName: userProfile?.name || user.displayName || 'You',
+            userUsername: userProfile?.username || 'you',
+            userPhotoURL: userProfile?.photoURL || user.photoURL || first.userPhotoURL || '',
+            stories,
+            hasUnseen: false
+          };
+        } else if (followingUids.has(uId)) {
+          // PRIVACY GUARD: Only include if current user actually follows this person!
+          const hasUnseen = stories.some((s) => !s.viewers.includes(user.uid));
+          
+          // Use latest live user profile details if available
+          let livePhoto = first.userPhotoURL || '';
+          let liveName = first.userName || 'User';
+
+          try {
+            const uDoc = await getDoc(doc(db, 'users', uId));
+            if (uDoc.exists()) {
+              const uData = uDoc.data();
+              if (uData.photoURL) livePhoto = uData.photoURL;
+              if (uData.name) liveName = uData.name;
+            }
+          } catch {}
+
+          otherGroups.push({
+            userId: uId,
+            userName: liveName,
+            userUsername: first.userUsername,
+            userPhotoURL: livePhoto,
+            stories,
+            hasUnseen
+          });
         }
-      });
+      }
 
       // Sort friends: unseen stories first
       otherGroups.sort((a, b) => (b.hasUnseen ? 1 : 0) - (a.hasUnseen ? 1 : 0));
@@ -100,7 +140,10 @@ export default function StoriesBar({ onOpenCreate, onViewStory }: StoriesBarProp
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user?.uid, followingUids, userProfile]);
+
+  // Current user's avatar (prioritizes edited Firestore photoURL over Google photoURL)
+  const myPhoto = userProfile?.photoURL || user?.photoURL;
 
   return (
     <div className="flex-shrink-0 w-full border-b border-white/[0.08] bg-black/10 backdrop-blur-md px-3 py-2.5 overflow-x-auto no-scrollbar flex items-center gap-3.5">
@@ -124,8 +167,8 @@ export default function StoriesBar({ onOpenCreate, onViewStory }: StoriesBarProp
             }`}
           >
             <div className="w-full h-full rounded-full overflow-hidden bg-surface flex items-center justify-center border border-black/50">
-              {user?.photoURL ? (
-                <img src={user.photoURL} alt="Your profile" className="w-full h-full object-cover" />
+              {myPhoto ? (
+                <img src={myPhoto} alt="Your profile" className="w-full h-full object-cover" />
               ) : (
                 <UserIcon size={24} className="text-text-secondary" />
               )}
@@ -150,7 +193,7 @@ export default function StoriesBar({ onOpenCreate, onViewStory }: StoriesBarProp
         </span>
       </div>
 
-      {/* 2. Friends' Stories */}
+      {/* 2. Friends' Stories (Followed Contacts Only) */}
       {storyGroups.map((group) => (
         <div 
           key={group.userId} 

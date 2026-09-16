@@ -15,7 +15,7 @@ export default function EditProfileModal({
   onClose: () => void;
   onUpdated: (updatedData: any) => void;
 }) {
-  const { user, setUser } = useAuthStore();
+  const { user, setUser, userProfile, setUserProfile } = useAuthStore();
   const [name, setName] = useState(profile?.name || '');
   const [username, setUsername] = useState(profile?.username || '');
   const [bio, setBio] = useState(profile?.bio || '');
@@ -61,6 +61,7 @@ export default function EditProfileModal({
         await updateProfile(auth.currentUser, { displayName: trimmedName });
         setUser({ ...auth.currentUser, displayName: trimmedName });
       }
+      setUserProfile({ ...userProfile, ...updatedFields });
 
       toast.success("Profile updated successfully!", { id: toastId });
       onUpdated(updatedFields);
