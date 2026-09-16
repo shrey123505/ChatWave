@@ -409,13 +409,13 @@ export default function AdminDashboardModal({ onClose }: { onClose: () => void }
             <div className="space-y-4">
               {/* Search Bar */}
               <div className="relative">
-                <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-secondary" />
+                <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/50" />
                 <input
                   type="text"
                   value={searchFilter}
                   onChange={(e) => setSearchFilter(e.target.value)}
                   placeholder="Filter users by name, @username, or UID..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-surface/80 border border-white/10 text-sm focus:outline-none focus:border-amber-400/50 text-text placeholder-text-secondary transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/40 border border-white/20 text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-white placeholder:text-white/40 transition-all shadow-inner"
                 />
               </div>
 
@@ -597,7 +597,7 @@ export default function AdminDashboardModal({ onClose }: { onClose: () => void }
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1.5 uppercase tracking-wider">
+                <label className="block text-xs font-bold text-amber-300 mb-2 uppercase tracking-wider">
                   Announcement Title
                 </label>
                 <input
@@ -605,13 +605,13 @@ export default function AdminDashboardModal({ onClose }: { onClose: () => void }
                   value={broadcastTitle}
                   onChange={(e) => setBroadcastTitle(e.target.value)}
                   placeholder="e.g. 🚀 ChatWave Update Released!"
-                  className="w-full px-4 py-2.5 rounded-xl bg-surface/80 border border-white/10 text-sm focus:outline-none focus:border-primary text-text placeholder-text-secondary"
+                  className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/20 text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-white placeholder:text-white/40 transition-all shadow-inner"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1.5 uppercase tracking-wider">
+                <label className="block text-xs font-bold text-amber-300 mb-2 uppercase tracking-wider">
                   Announcement Message
                 </label>
                 <textarea
@@ -619,7 +619,7 @@ export default function AdminDashboardModal({ onClose }: { onClose: () => void }
                   onChange={(e) => setBroadcastMessage(e.target.value)}
                   rows={4}
                   placeholder="Write your announcement details here for all users to see..."
-                  className="w-full px-4 py-2.5 rounded-xl bg-surface/80 border border-white/10 text-sm focus:outline-none focus:border-primary text-text placeholder-text-secondary resize-none"
+                  className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/20 text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-white placeholder:text-white/40 resize-none transition-all shadow-inner"
                   required
                 />
               </div>
