@@ -10,7 +10,8 @@ import {
   serverTimestamp, 
   updateDoc, 
   setDoc,
-  getDoc
+  getDoc,
+  increment
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -33,7 +34,9 @@ import {
   Bell,
   Ban,
   AlertTriangle,
-  UserCheck
+  UserCheck,
+  Lock,
+  UserPlus
 } from 'lucide-react';
 import { compressImage } from '../../utils/imageCompressor';
 import { playNotificationSound, showSystemNotification, requestNotificationPermission } from '../../utils/notification';
@@ -90,9 +93,11 @@ export default function ChatRoom({
   const [isOtherTyping, setIsOtherTyping] = useState(false);
   const typingTimeoutRef = useRef<any>(null);
 
-  // Safety & Mute States
+  // Safety, Follow & Mute States
   const [isMuted, setIsMuted] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followingLoading, setFollowingLoading] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
 
@@ -129,7 +134,35 @@ export default function ChatRoom({
     getDoc(doc(db, 'users', user.uid, 'blockedUsers', activeUser.uid)).then((d) => {
       setIsBlocked(d.exists());
     });
+
+    // Check Following Status (for Private Account Protection)
+    getDoc(doc(db, 'users', activeUser.uid, 'followers', user.uid)).then((d) => {
+      setIsFollowing(d.exists());
+    });
   }, [chatId, user?.uid, activeUser?.uid]);
+
+  // Handle Following directly from Chat
+  const handleFollowFromChat = async () => {
+    if (!user?.uid || !activeUser?.uid || followingLoading) return;
+    setFollowingLoading(true);
+    try {
+      const followerRef = doc(db, 'users', activeUser.uid, 'followers', user.uid);
+      const followingRef = doc(db, 'users', user.uid, 'following', activeUser.uid);
+      await setDoc(followerRef, { followedAt: new Date().toISOString() });
+      await setDoc(followingRef, { followedAt: new Date().toISOString() });
+      await updateDoc(doc(db, 'users', activeUser.uid), { followersCount: increment(1) }).catch(() => {});
+      await updateDoc(doc(db, 'users', user.uid), { followingCount: increment(1) }).catch(() => {});
+      setIsFollowing(true);
+      toast.success(`You are now following @${liveUserData?.username || activeUser?.username || 'user'}! Chat unlocked.`);
+    } catch (err: any) {
+      toast.error('Failed to follow: ' + err.message);
+    } finally {
+      setFollowingLoading(false);
+    }
+  };
+
+  // Determine if account is private and not followed
+  const isPrivateLocked = liveUserData?.isPrivate && !isFollowing && user?.uid !== activeUser?.uid;
 
   // Real-time Listener for Active User's Presence (isOnline / lastSeen)
   useEffect(() => {
@@ -657,7 +690,26 @@ export default function ChatRoom({
           Messages are pinned to the left and right edges!
           ======================================================= */}
       <div className="flex-1 overflow-y-auto overscroll-contain p-2.5 sm:p-4 space-y-2 min-h-0 w-full">
-        {messages.length === 0 ? (
+        {isPrivateLocked ? (
+          <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-20 h-20 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center shadow-xl">
+              <Lock size={36} className="text-primary" />
+            </div>
+            <div className="space-y-1 max-w-sm">
+              <h3 className="text-lg font-bold text-text">This Account is Private</h3>
+              <p className="text-xs text-text-secondary leading-relaxed">
+                @{liveUserData?.username || activeUser?.username} has set their account to private. Follow them to connect and send messages.
+              </p>
+            </div>
+            <button
+              onClick={handleFollowFromChat}
+              disabled={followingLoading}
+              className="px-6 py-2.5 bg-gradient-to-r from-primary to-secondary text-white font-bold rounded-xl text-sm shadow-lg flex items-center gap-2 hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
+            >
+              <UserPlus size={16} /> Follow @{liveUserData?.username || activeUser?.username}
+            </button>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center text-text-secondary opacity-60 p-8 space-y-2">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
               <Smile size={32} className="text-primary" />
@@ -826,6 +878,23 @@ export default function ChatRoom({
         {isBlocked ? (
           <div className="text-center p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400">
             You cannot send messages to a blocked user.
+          </div>
+        ) : isPrivateLocked ? (
+          <div className="flex items-center justify-between gap-3 p-3 bg-primary/10 border border-primary/20 rounded-xl text-xs animate-in fade-in">
+            <div className="flex items-center gap-2 text-text min-w-0">
+              <Lock size={16} className="text-primary flex-shrink-0" />
+              <span className="truncate">
+                <strong className="text-primary">@{liveUserData?.username || activeUser?.username}</strong>'s account is private. Follow to chat.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleFollowFromChat}
+              disabled={followingLoading}
+              className="px-4 py-2 bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-white font-semibold rounded-xl text-xs transition-transform active:scale-95 shadow-md flex items-center gap-1.5 flex-shrink-0 disabled:opacity-50"
+            >
+              <UserPlus size={14} /> Follow
+            </button>
           </div>
         ) : isRecording ? (
           /* Voice Recording Bar */

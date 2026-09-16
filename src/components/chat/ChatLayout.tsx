@@ -89,13 +89,15 @@ export default function ChatLayout() {
         if (change.type === 'added') {
           const callData: any = { id: change.doc.id, ...change.doc.data() };
           setIncomingCall(callData);
-          if (document.hidden) {
-            showSystemNotification(
-              `📞 Incoming ${callData.callType === 'video' ? 'Video' : 'Audio'} Call`,
-              `${callData.callerName || 'Someone'} is calling you... Click to answer`,
-              callData.callerPhotoURL || '/favicon.svg'
-            );
-          }
+          showSystemNotification(
+            `📞 Incoming ${callData.callType === 'video' ? 'Video' : 'Audio'} Call`,
+            `${callData.callerName || 'Someone'} is calling you... Click to answer`,
+            callData.callerPhotoURL || '/favicon.svg'
+          );
+          toast(
+            `📞 Incoming ${callData.callType === 'video' ? 'Video' : 'Audio'} Call from ${callData.callerName || 'Someone'}`,
+            { icon: '🔔', duration: 7000 }
+          );
         } else if (change.type === 'modified' || change.type === 'removed') {
           const status = change.doc.data().status;
           if (status === 'ended' || status === 'declined') {

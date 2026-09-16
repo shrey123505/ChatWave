@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { X, Check } from 'lucide-react';
+import { X, Check, Trash2, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
+import DeleteAccountModal from './DeleteAccountModal';
 
 const themes = [
   { id: 'theme-default', name: 'Violet (Default)', color: 'bg-violet-500' },
@@ -11,6 +13,7 @@ const themes = [
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const { theme, setTheme, user } = useAuthStore();
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const profileUrl = window.location.origin + '?user=' + user?.uid;
 
   return (
@@ -23,7 +26,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto space-y-8 flex-1 text-text">
+        <div className="p-6 overflow-y-auto space-y-6 flex-1 text-text">
           {/* QR Code Section */}
           <div className="flex flex-col items-center text-center space-y-4">
             <h3 className="text-lg font-medium text-text-secondary">Scan to Chat</h3>
@@ -55,8 +58,36 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               ))}
             </div>
           </div>
+
+          <hr className="border-white/10" />
+
+          {/* Danger Zone: Account Deletion */}
+          <div className="p-4 rounded-xl border border-red-500/20 bg-red-500/5 space-y-3">
+            <div className="flex items-center gap-2 text-red-400 font-semibold text-sm">
+              <AlertTriangle size={16} />
+              <span>Danger Zone</span>
+            </div>
+            <p className="text-xs text-text-secondary">
+              Permanently delete your account, your profile data, and personal stories.
+            </p>
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="w-full py-2.5 px-4 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 active:scale-98"
+            >
+              <Trash2 size={14} /> Delete Account
+            </button>
+          </div>
         </div>
       </div>
+
+      {showDeleteModal && (
+        <DeleteAccountModal
+          onClose={() => {
+            setShowDeleteModal(false);
+            onClose();
+          }}
+        />
+      )}
     </div>
   );
 }

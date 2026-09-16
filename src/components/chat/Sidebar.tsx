@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, getDocs, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Search, UserPlus, User as UserIcon, Users, Sparkles } from 'lucide-react';
+import { Search, UserPlus, User as UserIcon, Users, Sparkles, Lock } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 
 export default function Sidebar({ 
@@ -119,9 +119,16 @@ export default function Sidebar({
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <h4 className="font-semibold text-text truncate group-hover:text-primary transition-colors text-sm">
-                  {u.name || 'User'}
-                </h4>
+                <div className="flex items-center gap-1.5">
+                  <h4 className="font-semibold text-text truncate group-hover:text-primary transition-colors text-sm">
+                    {u.name || 'User'}
+                  </h4>
+                  {u.isPrivate && (
+                    <span className="p-0.5 rounded bg-primary/10 border border-primary/20 text-primary" title="Private Account">
+                      <Lock size={11} />
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-text-secondary truncate">
                   @{u.username || 'unknown'}
                 </p>
