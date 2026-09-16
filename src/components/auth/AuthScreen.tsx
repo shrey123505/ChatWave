@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signInWithRedirect } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signInWithRedirect, signInWithPopup } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../../lib/firebase';
 import { Lock, User, AtSign, Calendar } from 'lucide-react';
@@ -45,9 +45,22 @@ export default function AuthScreen() {
     setError('');
     setLoading(true);
     try {
-      await signInWithRedirect(auth, googleProvider);
+      // First attempt popup sign-in (instant, doesn't leave page or trigger page reloads)
+      await signInWithPopup(auth, googleProvider);
     } catch (err: any) {
-      setError(err.message);
+      console.warn("Popup sign-in encountered an issue, trying redirect fallback:", err);
+      // If popup was blocked or not supported (e.g. strict standalone PWA), fallback to redirect
+      if (err.code === 'auth/popup-blocked' || err.code === 'auth/operation-not-supported-in-this-environment') {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirectErr: any) {
+          setError(redirectErr.message);
+        }
+      } else if (err.code !== 'auth/popup-closed-by-user') {
+        setError(err.message);
+      }
+    } finally {
       setLoading(false);
     }
   };

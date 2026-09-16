@@ -87,8 +87,9 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={!user ? <AuthScreen /> : <Navigate to="/" />} />
-        <Route path="/" element={user ? <ChatLayout /> : <Navigate to="/login" />} />
+        <Route path="/" element={user ? <ChatLayout /> : <AuthScreen />} />
+        <Route path="/login" element={user ? <Navigate to="/" replace /> : <AuthScreen />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
