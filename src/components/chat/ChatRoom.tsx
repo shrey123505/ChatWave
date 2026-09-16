@@ -287,6 +287,50 @@ export default function ChatRoom({
     setDoc(typingDocRef, { isTyping: false, timestamp: Date.now() }, { merge: true }).catch(() => {});
   };
 
+  // Keep both users' conversation cards synced in real time
+  const syncConversations = (previewText: string, messageType: 'text' | 'image' | 'audio') => {
+    if (!user?.uid || !activeUser?.uid) return;
+    const now = Date.now();
+
+    // 1. Current user's conversation record
+    const myConvRef = doc(db, 'users', user.uid, 'conversations', activeUser.uid);
+    setDoc(myConvRef, {
+      peerUid: activeUser.uid,
+      peerName: liveUserData?.name || activeUser.name || 'User',
+      peerUsername: liveUserData?.username || activeUser.username || '',
+      peerPhotoURL: liveUserData?.photoURL || activeUser.photoURL || '',
+      isPrivate: !!(liveUserData?.isPrivate ?? activeUser.isPrivate),
+      lastMessage: previewText,
+      lastMessageType: messageType,
+      lastMessageTime: now,
+      unread: false,
+      updatedAt: serverTimestamp()
+    }, { merge: true }).catch(() => {});
+
+    // 2. Peer's conversation record
+    const peerConvRef = doc(db, 'users', activeUser.uid, 'conversations', user.uid);
+    setDoc(peerConvRef, {
+      peerUid: user.uid,
+      peerName: user.displayName || 'User',
+      peerUsername: (user as any).username || '',
+      peerPhotoURL: user.photoURL || '',
+      isPrivate: false,
+      lastMessage: previewText,
+      lastMessageType: messageType,
+      lastMessageTime: now,
+      unread: true,
+      updatedAt: serverTimestamp()
+    }, { merge: true }).catch(() => {});
+  };
+
+  // Mark this conversation as read when active
+  useEffect(() => {
+    if (!user?.uid || !activeUser?.uid) return;
+    updateDoc(doc(db, 'users', user.uid, 'conversations', activeUser.uid), {
+      unread: false
+    }).catch(() => {});
+  }, [user?.uid, activeUser?.uid]);
+
   // Send Text Message
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -318,6 +362,9 @@ export default function ChatRoom({
         replyTo: replySnapshot,
         createdAt: serverTimestamp()
       });
+
+      // Update both participants' conversations list
+      syncConversations(trimmed, 'text');
 
       // Update receiver's inbox for global notifications
       if (activeUser?.uid) {
@@ -368,6 +415,9 @@ export default function ChatRoom({
         replyTo: replySnapshot,
         createdAt: serverTimestamp()
       });
+
+      // Update both participants' conversations list
+      syncConversations('📷 Photo', 'image');
 
       // Update receiver's inbox for global notifications
       if (activeUser?.uid) {
@@ -457,6 +507,9 @@ export default function ChatRoom({
             seen: false,
             createdAt: serverTimestamp()
           });
+
+          // Update both participants' conversations list
+          syncConversations('🎙️ Voice note', 'audio');
 
           // Update receiver's inbox for global notifications
           if (activeUser?.uid) {

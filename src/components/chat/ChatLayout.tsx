@@ -278,8 +278,13 @@ export default function ChatLayout() {
         {/* Desktop Contacts & Search */}
         <div className="flex-1 overflow-hidden">
           <Sidebar 
-            mode="all"
+            mode="chats"
+            onSelectChat={(selected) => {
+              setViewingProfileUser(null);
+              setActiveChatUser(selected);
+            }}
             onSelectUser={(selected) => setViewingProfileUser(selected)} 
+            onOpenScanner={() => setShowScanner(true)}
           />
         </div>
       </div>
@@ -403,8 +408,13 @@ export default function ChatLayout() {
 
                 <div className="flex-1 overflow-hidden">
                   <Sidebar 
-                    mode="all"
+                    mode="chats"
+                    onSelectChat={(selected) => {
+                      setViewingProfileUser(null);
+                      setActiveChatUser(selected);
+                    }}
                     onSelectUser={(selected) => setViewingProfileUser(selected)} 
+                    onOpenScanner={() => setShowScanner(true)}
                   />
                 </div>
               </div>
@@ -416,7 +426,12 @@ export default function ChatLayout() {
                 <div className="flex-1 overflow-hidden">
                   <Sidebar 
                     mode="search"
+                    onSelectChat={(selected) => {
+                      setViewingProfileUser(null);
+                      setActiveChatUser(selected);
+                    }}
                     onSelectUser={(selected) => setViewingProfileUser(selected)} 
+                    onOpenScanner={() => setShowScanner(true)}
                   />
                 </div>
               </div>
