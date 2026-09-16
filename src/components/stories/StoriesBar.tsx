@@ -15,6 +15,7 @@ export interface Story {
   createdAt: string;
   expiresAt: number;
   viewers: string[];
+  likes?: string[];
 }
 
 export interface StoryGroup {

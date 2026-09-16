@@ -49,25 +49,34 @@ export default function CallModal({
   const timerRef = useRef<any>(null);
   const isEndingRef = useRef<boolean>(false);
 
-  const endCall = async () => {
+  const endCall = async (notifyPeer = true) => {
     if (isEndingRef.current) return;
     isEndingRef.current = true;
 
-    toast("Call ended", { id: 'call-status-toast' });
+    toast("Call ended", { id: 'call-status-toast', duration: 1500 });
     if (timerRef.current) clearInterval(timerRef.current);
 
-    try {
-      await updateDoc(doc(db, 'calls', callId), {
-        status: 'ended',
-        endedAt: serverTimestamp()
-      });
-    } catch {}
+    if (notifyPeer) {
+      try {
+        await updateDoc(doc(db, 'calls', callId), {
+          status: 'ended',
+          endedAt: serverTimestamp()
+        });
+      } catch {}
+    }
 
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      try {
+        localStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+          track.enabled = false;
+        });
+      } catch {}
     }
     if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
+      try {
+        peerConnectionRef.current.close();
+      } catch {}
     }
     onEndCall();
   };
@@ -138,9 +147,11 @@ export default function CallModal({
             }
             if (data?.status === 'ended' || data?.status === 'declined') {
               if (!isEndingRef.current) {
-                isEndingRef.current = true;
-                toast(data.status === 'declined' ? "Call declined" : "Call ended", { id: 'call-status-toast' });
-                endCall();
+                toast(data.status === 'declined' ? "Call declined" : "Call ended", { 
+                  id: 'call-status-toast', 
+                  duration: 1500 
+                });
+                endCall(false);
               }
             }
           });
@@ -176,9 +187,8 @@ export default function CallModal({
             }
             if (data?.status === 'ended') {
               if (!isEndingRef.current) {
-                isEndingRef.current = true;
-                toast("Call ended", { id: 'call-status-toast' });
-                endCall();
+                toast("Call ended", { id: 'call-status-toast', duration: 1500 });
+                endCall(false);
               }
             }
           });
@@ -368,7 +378,7 @@ export default function CallModal({
 
         <button
           type="button"
-          onClick={endCall}
+          onClick={() => endCall(true)}
           className="p-4 rounded-full bg-red-600 hover:bg-red-700 text-white transition-all shadow-xl active:scale-95 hover:scale-105"
           title="End Call"
         >

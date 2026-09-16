@@ -152,6 +152,17 @@ export default function ChatRoom({
       await setDoc(followingRef, { followedAt: new Date().toISOString() });
       await updateDoc(doc(db, 'users', activeUser.uid), { followersCount: increment(1) }).catch(() => {});
       await updateDoc(doc(db, 'users', user.uid), { followingCount: increment(1) }).catch(() => {});
+
+      // Dispatch follow notification to target user's inbox
+      await addDoc(collection(db, 'users', activeUser.uid, 'inbox'), {
+        type: 'follow',
+        senderId: user.uid,
+        senderName: user.displayName || user.email || 'Someone',
+        senderPhotoURL: user.photoURL || '',
+        text: 'Started following you',
+        timestamp: Date.now()
+      }).catch(() => {});
+
       setIsFollowing(true);
       toast.success(`You are now following @${liveUserData?.username || activeUser?.username || 'user'}! Chat unlocked.`);
     } catch (err: any) {

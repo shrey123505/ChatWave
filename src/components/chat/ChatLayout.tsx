@@ -18,15 +18,17 @@ import {
   UserCircle, 
   ScanLine,
   ShieldCheck,
-  Lock,
-  Sparkles,
-  Phone
+  Lock, 
+  Sparkles, 
+  Phone,
+  Bell
 } from 'lucide-react';
 import SettingsModal from '../settings/SettingsModal';
 import ProfileModal from '../profile/ProfileModal';
 import QRScannerModal from '../settings/QRScannerModal';
 import CallModal from '../call/CallModal';
 import IncomingCallModal from '../call/IncomingCallModal';
+import NotificationModal from '../notifications/NotificationModal';
 import Sidebar from './Sidebar';
 import ChatRoom from './ChatRoom';
 import MobileBottomNav, { type MobileTab } from './MobileBottomNav';
@@ -54,6 +56,19 @@ export default function ChatLayout() {
   // Stories States
   const [showCreateStory, setShowCreateStory] = useState(false);
   const [activeStoryGroup, setActiveStoryGroup] = useState<StoryGroup | null>(null);
+
+  // Notifications States
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const q = query(collection(db, 'users', user.uid, 'inbox'));
+    const unsub = onSnapshot(q, (snap) => {
+      setUnreadNotifCount(snap.docs.length);
+    });
+    return () => unsub();
+  }, [user?.uid]);
 
   // Global Notification Hub: plays soft chime and shows system alert when message arrives
   useGlobalNotifications({
@@ -99,10 +114,7 @@ export default function ChatLayout() {
             { icon: '🔔', duration: 7000 }
           );
         } else if (change.type === 'modified' || change.type === 'removed') {
-          const status = change.doc.data().status;
-          if (status === 'ended' || status === 'declined') {
-            setIncomingCall((prev: any) => (prev?.id === change.doc.id ? null : prev));
-          }
+          setIncomingCall((prev: any) => (prev?.id === change.doc.id ? null : prev));
         }
       });
     });
@@ -223,6 +235,18 @@ export default function ChatLayout() {
               <UserCircle size={20} />
             </button>
             <button 
+              onClick={() => setShowNotifications(true)} 
+              className="relative p-2 rounded-full hover:bg-white/10 text-text-secondary hover:text-white transition-colors" 
+              title="Notifications"
+            >
+              <Bell size={20} />
+              {unreadNotifCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center animate-pulse shadow-sm">
+                  {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                </span>
+              )}
+            </button>
+            <button 
               onClick={() => setShowSettings(true)} 
               className="p-2 rounded-full hover:bg-white/10 text-text-secondary hover:text-white transition-colors" 
               title="Settings & Themes"
@@ -336,6 +360,18 @@ export default function ChatLayout() {
                     <MessageSquare size={22} /> ChatWave
                   </h2>
                   <div className="flex items-center gap-1">
+                    <button 
+                      onClick={() => setShowNotifications(true)} 
+                      className="relative p-2 rounded-full hover:bg-white/10 text-text-secondary hover:text-white transition-colors" 
+                      title="Notifications"
+                    >
+                      <Bell size={20} />
+                      {unreadNotifCount > 0 && (
+                        <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center animate-pulse shadow-sm">
+                          {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                        </span>
+                      )}
+                    </button>
                     <button 
                       onClick={() => setShowSettings(true)} 
                       className="p-2 rounded-full hover:bg-white/10 text-text-secondary hover:text-white transition-colors" 
@@ -483,6 +519,22 @@ export default function ChatLayout() {
         <StoryViewerModal 
           group={activeStoryGroup} 
           onClose={() => setActiveStoryGroup(null)} 
+        />
+      )}
+
+      {/* Activity & Notifications Modal */}
+      {showNotifications && (
+        <NotificationModal
+          onClose={() => setShowNotifications(false)}
+          onStartCall={(targetUser, type) => {
+            setActiveChatUser(targetUser);
+            handleStartCall(type);
+          }}
+          onSelectChat={(chatUser) => {
+            setViewingProfileUser(null);
+            setActiveChatUser(chatUser);
+            setShowNotifications(false);
+          }}
         />
       )}
     </div>

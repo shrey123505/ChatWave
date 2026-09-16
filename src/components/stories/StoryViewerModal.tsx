@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { doc, updateDoc, deleteDoc, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, addDoc, collection } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuthStore } from '../../store/useAuthStore';
-import { X, Trash2, Eye, ChevronLeft, ChevronRight, User as UserIcon } from 'lucide-react';
+import { X, Trash2, Eye, ChevronLeft, ChevronRight, User as UserIcon, Heart } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import type { StoryGroup } from './StoriesBar';
 
@@ -22,6 +22,55 @@ export default function StoryViewerModal({ group, onClose }: StoryViewerModalPro
   const stories = group.stories;
   const currentStory = stories[currentIndex];
   const isSelf = user?.uid === group.userId;
+
+  const [hasLiked, setHasLiked] = useState<boolean>(false);
+  const [likeCount, setLikeCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (currentStory && user?.uid) {
+      setHasLiked((currentStory.likes || []).includes(user.uid));
+      setLikeCount(currentStory.likes?.length || 0);
+    }
+  }, [currentStory, user?.uid]);
+
+  const handleToggleLike = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentStory || !user || isSelf) return;
+
+    const newLiked = !hasLiked;
+    setHasLiked(newLiked);
+    setLikeCount((prev) => Math.max(0, prev + (newLiked ? 1 : -1)));
+
+    try {
+      const storyRef = doc(db, 'stories', currentStory.id);
+      if (newLiked) {
+        await updateDoc(storyRef, {
+          likes: arrayUnion(user.uid)
+        });
+
+        // Send notification to story creator's inbox
+        await addDoc(collection(db, 'users', group.userId, 'inbox'), {
+          type: 'story_like',
+          senderId: user.uid,
+          senderName: user.displayName || user.email || 'Someone',
+          senderPhotoURL: user.photoURL || '',
+          text: 'Liked your story',
+          storyId: currentStory.id,
+          timestamp: Date.now()
+        }).catch(() => {});
+
+        toast('Liked story! ❤️', { id: 'story-like-toast', duration: 1500 });
+      } else {
+        await updateDoc(storyRef, {
+          likes: arrayRemove(user.uid)
+        });
+      }
+    } catch (err) {
+      console.warn("Error updating story like:", err);
+      setHasLiked(!newLiked);
+      setLikeCount((prev) => Math.max(0, prev + (!newLiked ? 1 : -1)));
+    }
+  };
 
   // Format relative time (e.g. 2h ago)
   const formatTimeAgo = (isoDate: string) => {
@@ -243,10 +292,38 @@ export default function StoryViewerModal({ group, onClose }: StoryViewerModalPro
             </div>
           )}
 
+          {/* Viewer Bottom Action: Floating Like Button */}
+          {!isSelf && (
+            <div className="flex items-center justify-end pointer-events-auto px-2 py-1">
+              <button
+                type="button"
+                onClick={handleToggleLike}
+                className={`p-3 rounded-full backdrop-blur-xl border transition-all active:scale-125 shadow-xl flex items-center gap-1.5 ${
+                  hasLiked
+                    ? 'bg-rose-500/20 border-rose-500/60 text-rose-500'
+                    : 'bg-black/60 border-white/20 text-white hover:bg-white/20'
+                }`}
+                title={hasLiked ? "Unlike" : "Like story"}
+              >
+                <Heart size={20} className={hasLiked ? 'fill-rose-500 text-rose-500 animate-bounce' : 'text-white'} />
+                {likeCount > 0 && (
+                  <span className="text-xs font-bold">{likeCount}</span>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Creator Bottom Stats: Views and Likes */}
           {isSelf && (
-            <div className="flex items-center justify-center gap-1.5 text-xs text-white/80 font-medium py-1">
-              <Eye size={14} />
-              <span>{currentStory.viewers?.length || 0} {currentStory.viewers?.length === 1 ? 'view' : 'views'}</span>
+            <div className="flex items-center justify-center gap-4 text-xs text-white/90 font-medium py-1">
+              <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 shadow">
+                <Eye size={14} className="text-primary" />
+                <span>{currentStory.viewers?.length || 0} views</span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 shadow">
+                <Heart size={14} className="text-rose-400 fill-rose-400" />
+                <span>{likeCount} {likeCount === 1 ? 'like' : 'likes'}</span>
+              </div>
             </div>
           )}
         </div>

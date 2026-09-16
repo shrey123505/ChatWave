@@ -5,7 +5,9 @@ import {
   updateDoc, 
   setDoc, 
   deleteDoc, 
-  increment 
+  increment,
+  addDoc,
+  collection 
 } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { 
@@ -175,6 +177,17 @@ export default function ProfileModal({
         await setDoc(followingRef, { followedAt: new Date().toISOString() });
         await updateDoc(doc(db, 'users', resolvedUid), { followersCount: increment(1) });
         await updateDoc(doc(db, 'users', user.uid), { followingCount: increment(1) });
+
+        // Dispatch follow notification to inbox
+        await addDoc(collection(db, 'users', resolvedUid, 'inbox'), {
+          type: 'follow',
+          senderId: user.uid,
+          senderName: user.displayName || user.email || 'Someone',
+          senderPhotoURL: user.photoURL || '',
+          text: 'Started following you',
+          timestamp: Date.now()
+        }).catch(() => {});
+
         toast.success(`Followed @${profile?.username || 'user'}`);
       } else {
         await deleteDoc(followerRef);
