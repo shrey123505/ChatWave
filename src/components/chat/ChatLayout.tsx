@@ -101,19 +101,25 @@ export default function ChatLayout() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
+        const callData: any = { id: change.doc.id, ...change.doc.data() };
         if (change.type === 'added') {
-          const callData: any = { id: change.doc.id, ...change.doc.data() };
           setIncomingCall(callData);
           showSystemNotification(
-            `📞 Incoming ${callData.callType === 'video' ? 'Video' : 'Audio'} Call`,
+            `📞 Incoming ${callData.type === 'video' ? 'Video' : 'Audio'} Call`,
             `${callData.callerName || 'Someone'} is calling you... Click to answer`,
             callData.callerPhotoURL || '/favicon.svg'
           );
           toast(
-            `📞 Incoming ${callData.callType === 'video' ? 'Video' : 'Audio'} Call from ${callData.callerName || 'Someone'}`,
+            `📞 Incoming ${callData.type === 'video' ? 'Video' : 'Audio'} Call from ${callData.callerName || 'Someone'}`,
             { icon: '🔔', duration: 7000 }
           );
-        } else if (change.type === 'modified' || change.type === 'removed') {
+        } else if (change.type === 'modified') {
+          if (callData.status !== 'calling') {
+            setIncomingCall((prev: any) => (prev?.id === change.doc.id ? null : prev));
+          } else {
+            setIncomingCall((prev: any) => (prev?.id === change.doc.id ? callData : prev));
+          }
+        } else if (change.type === 'removed') {
           setIncomingCall((prev: any) => (prev?.id === change.doc.id ? null : prev));
         }
       });

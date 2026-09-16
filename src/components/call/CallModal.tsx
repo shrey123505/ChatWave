@@ -84,13 +84,43 @@ export default function CallModal({
   useEffect(() => {
     let pc: RTCPeerConnection;
     let localStream: MediaStream;
+    let unsubCall: (() => void) | null = null;
+    let unsubCandidates: (() => void) | null = null;
+    let hasRemoteDescription = false;
+    const pendingCandidates: any[] = [];
+
+    const flushCandidates = async (peerConn: RTCPeerConnection) => {
+      while (pendingCandidates.length > 0) {
+        const cand = pendingCandidates.shift();
+        if (cand) {
+          try {
+            await peerConn.addIceCandidate(new RTCIceCandidate(cand));
+          } catch (e) {
+            console.warn("Error adding queued candidate:", e);
+          }
+        }
+      }
+    };
 
     const startCall = async () => {
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: callType === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false
-        });
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: callType === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false
+          });
+        } catch (mediaErr) {
+          if (callType === 'video') {
+            try {
+              localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+            } catch {
+              toast("Camera unavailable, falling back to audio", { id: 'call-status-toast', duration: 2000 });
+              localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            }
+          } else {
+            throw mediaErr;
+          }
+        }
         localStreamRef.current = localStream;
 
         if (localVideoRef.current && callType === 'video') {
@@ -107,6 +137,7 @@ export default function CallModal({
         pc.ontrack = (event) => {
           if (remoteVideoRef.current && event.streams[0]) {
             remoteVideoRef.current.srcObject = event.streams[0];
+            remoteVideoRef.current.play().catch(() => {});
             setCallStatus('connected');
           }
         };
@@ -138,14 +169,23 @@ export default function CallModal({
             status: 'calling'
           });
 
-          const unsubCall = onSnapshot(callDocRef, (snapshot) => {
+          unsubCall = onSnapshot(callDocRef, async (snapshot) => {
             const data = snapshot.data();
-            if (!pc.currentRemoteDescription && data?.answer) {
-              const answerDesc = new RTCSessionDescription(data.answer);
-              pc.setRemoteDescription(answerDesc).catch(console.error);
-              setCallStatus('connected');
+            if (!data) return;
+
+            if (!hasRemoteDescription && data.answer && !pc.currentRemoteDescription) {
+              try {
+                const answerDesc = new RTCSessionDescription(data.answer);
+                await pc.setRemoteDescription(answerDesc);
+                hasRemoteDescription = true;
+                await flushCandidates(pc);
+                setCallStatus('connected');
+              } catch (err) {
+                console.error("Error setting answer remote description:", err);
+              }
             }
-            if (data?.status === 'ended' || data?.status === 'declined') {
+
+            if (data.status === 'ended' || data.status === 'declined') {
               if (!isEndingRef.current) {
                 toast(data.status === 'declined' ? "Call declined" : "Call ended", { 
                   id: 'call-status-toast', 
@@ -156,36 +196,44 @@ export default function CallModal({
             }
           });
 
-          const unsubCandidates = onSnapshot(receiverCandidatesCol, (snapshot) => {
+          unsubCandidates = onSnapshot(receiverCandidatesCol, (snapshot) => {
             snapshot.docChanges().forEach((change) => {
               if (change.type === 'added' && !isEndingRef.current) {
-                const candidate = new RTCIceCandidate(change.doc.data());
-                pc.addIceCandidate(candidate).catch(console.error);
+                const candidateData = change.doc.data();
+                if (hasRemoteDescription && pc.remoteDescription) {
+                  pc.addIceCandidate(new RTCIceCandidate(candidateData)).catch(console.error);
+                } else {
+                  pendingCandidates.push(candidateData);
+                }
               }
             });
           });
-
-          return () => {
-            unsubCall();
-            unsubCandidates();
-          };
         } else {
-          const unsubCall = onSnapshot(callDocRef, async (snapshot) => {
+          unsubCall = onSnapshot(callDocRef, async (snapshot) => {
             const data = snapshot.data();
-            if (!pc.currentRemoteDescription && data?.offer) {
-              const offerDesc = new RTCSessionDescription(data.offer);
-              await pc.setRemoteDescription(offerDesc);
+            if (!data) return;
 
-              const answerDesc = await pc.createAnswer();
-              await pc.setLocalDescription(answerDesc);
+            if (!hasRemoteDescription && data.offer && !pc.currentRemoteDescription) {
+              try {
+                const offerDesc = new RTCSessionDescription(data.offer);
+                await pc.setRemoteDescription(offerDesc);
+                hasRemoteDescription = true;
+                await flushCandidates(pc);
 
-              await updateDoc(callDocRef, {
-                answer: { type: answerDesc.type, sdp: answerDesc.sdp },
-                status: 'ongoing'
-              });
-              setCallStatus('connected');
+                const answerDesc = await pc.createAnswer();
+                await pc.setLocalDescription(answerDesc);
+
+                await updateDoc(callDocRef, {
+                  answer: { type: answerDesc.type, sdp: answerDesc.sdp },
+                  status: 'ongoing'
+                });
+                setCallStatus('connected');
+              } catch (err) {
+                console.error("Error answering call:", err);
+              }
             }
-            if (data?.status === 'ended') {
+
+            if (data.status === 'ended') {
               if (!isEndingRef.current) {
                 toast("Call ended", { id: 'call-status-toast', duration: 1500 });
                 endCall(false);
@@ -193,19 +241,18 @@ export default function CallModal({
             }
           });
 
-          const unsubCandidates = onSnapshot(callerCandidatesCol, (snapshot) => {
+          unsubCandidates = onSnapshot(callerCandidatesCol, (snapshot) => {
             snapshot.docChanges().forEach((change) => {
               if (change.type === 'added' && !isEndingRef.current) {
-                const candidate = new RTCIceCandidate(change.doc.data());
-                pc.addIceCandidate(candidate).catch(console.error);
+                const candidateData = change.doc.data();
+                if (hasRemoteDescription && pc.remoteDescription) {
+                  pc.addIceCandidate(new RTCIceCandidate(candidateData)).catch(console.error);
+                } else {
+                  pendingCandidates.push(candidateData);
+                }
               }
             });
           });
-
-          return () => {
-            unsubCall();
-            unsubCandidates();
-          };
         }
       } catch (err: any) {
         console.error("WebRTC initialization error:", err);
@@ -217,6 +264,8 @@ export default function CallModal({
     startCall();
 
     return () => {
+      if (unsubCall) unsubCall();
+      if (unsubCandidates) unsubCandidates();
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => track.stop());
       }
@@ -292,12 +341,12 @@ export default function CallModal({
 
       {/* Main Center Video / Avatar Area */}
       <div className="relative w-full max-w-3xl flex-1 my-4 flex items-center justify-center rounded-3xl overflow-hidden bg-surface/50 border border-white/10 shadow-2xl">
-        {/* Remote Video Element */}
+        {/* Remote Video Element - Keep mounted and visible to layout so browser never suspends audio */}
         <video 
           ref={remoteVideoRef} 
           autoPlay 
           playsInline 
-          className={`w-full h-full object-cover ${callType === 'audio' || callStatus !== 'connected' ? 'hidden' : 'block'}`}
+          className={callType === 'video' && callStatus === 'connected' ? "w-full h-full object-cover" : "absolute w-px h-px opacity-0 pointer-events-none"}
         />
 
         {/* Remote Audio Fallback Avatar */}
