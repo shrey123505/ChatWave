@@ -1,17 +1,21 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { onAuthStateChanged, getRedirectResult } from 'firebase/auth';
+import { onAuthStateChanged, getRedirectResult, signOut } from 'firebase/auth';
 import type { User as FirebaseAuthUser } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import { useAuthStore } from './store/useAuthStore';
 import AuthScreen from './components/auth/AuthScreen';
 import ChatLayout from './components/chat/ChatLayout';
+import { ShieldAlert, LogOut } from 'lucide-react';
 
 function App() {
-  const { user, loading, setUser } = useAuthStore();
+  const { user, userProfile, loading, setUser, setUserProfile } = useAuthStore();
+  const [profileLoading, setProfileLoading] = useState(true);
 
   useEffect(() => {
+    let profileUnsub: (() => void) | null = null;
+
     const ensureUserProfile = async (firebaseUser: FirebaseAuthUser) => {
       const userRef = doc(db, 'users', firebaseUser.uid);
       const userDoc = await getDoc(userRef);
@@ -69,19 +73,66 @@ function App() {
 
     handleRedirectResult();
 
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+    const authUnsub = onAuthStateChanged(auth, async (u) => {
+      if (profileUnsub) {
+        profileUnsub();
+        profileUnsub = null;
+      }
+
       if (u) {
-        // Just to be safe, also check/create profile on normal auth state changes
-        // if they somehow bypassed the redirect result hook (e.g. email/password first login)
         await ensureUserProfile(u);
+        // Subscribe to live profile document
+        profileUnsub = onSnapshot(doc(db, 'users', u.uid), (snap) => {
+          if (snap.exists()) {
+            setUserProfile(snap.data());
+          }
+          setProfileLoading(false);
+        }, (err) => {
+          console.error("Profile subscription error:", err);
+          setProfileLoading(false);
+        });
+      } else {
+        setUserProfile(null);
+        setProfileLoading(false);
       }
       setUser(u);
     });
-    return () => unsubscribe();
-  }, [setUser]);
 
-  if (loading) {
-    return <div className="flex h-screen items-center justify-center bg-background"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div></div>;
+    return () => {
+      authUnsub();
+      if (profileUnsub) profileUnsub();
+    };
+  }, [setUser, setUserProfile]);
+
+  if (loading || (user && profileLoading)) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // Account Suspension / Ban Screen Guard
+  if (user && userProfile?.isBanned) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-background text-text">
+        <div className="glass-panel max-w-md w-full p-8 rounded-2xl border border-red-500/30 text-center space-y-4 shadow-2xl">
+          <div className="w-16 h-16 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center mx-auto">
+            <ShieldAlert size={36} />
+          </div>
+          <h2 className="text-2xl font-bold text-red-400">Account Suspended</h2>
+          <p className="text-text-secondary text-sm">
+            Your ChatWave account has been suspended by the platform administrator for violating community guidelines.
+          </p>
+          <button
+            onClick={() => signOut(auth)}
+            className="w-full py-3 px-4 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 font-semibold text-sm border border-red-500/40 transition-colors flex items-center justify-center gap-2"
+          >
+            <LogOut size={16} /> Sign Out
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -94,4 +145,5 @@ function App() {
     </BrowserRouter>
   );
 }
+
 export default App;

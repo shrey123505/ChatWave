@@ -24,17 +24,19 @@ import {
   Heart, 
   Trash2, 
   User as UserIcon,
-  PhoneMissed
+  PhoneMissed,
+  Megaphone
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface NotificationItem {
   id: string;
-  type: 'message' | 'missed_call' | 'follow' | 'story_like';
+  type: 'message' | 'missed_call' | 'follow' | 'story_like' | 'broadcast';
   senderId: string;
   senderName: string;
   senderUsername?: string;
   senderPhotoURL?: string;
+  title?: string;
   text?: string;
   callType?: 'audio' | 'video';
   storyId?: string;
@@ -233,6 +235,10 @@ export default function NotificationModal({
                       <div className="w-full h-full bg-rose-500 rounded-full flex items-center justify-center">
                         <Heart size={10} className="fill-white" />
                       </div>
+                    ) : n.type === 'broadcast' ? (
+                      <div className="w-full h-full bg-amber-500 text-black rounded-full flex items-center justify-center">
+                        <Megaphone size={10} />
+                      </div>
                     ) : (
                       <div className="w-full h-full bg-blue-500 rounded-full flex items-center justify-center">
                         💬
@@ -245,7 +251,7 @@ export default function NotificationModal({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <h5 className="font-semibold text-xs text-text truncate">
-                      {n.senderName || 'Friend'}
+                      {n.type === 'broadcast' ? '📢 Platform Announcement' : (n.senderName || 'Friend')}
                     </h5>
                     <span className="text-[10px] text-text-secondary flex-shrink-0 ml-2">
                       {formatTime(n.timestamp)}
@@ -258,6 +264,8 @@ export default function NotificationModal({
                       <span className="text-primary font-medium">Started following you</span>
                     ) : n.type === 'story_like' ? (
                       <span className="text-rose-400 font-medium">Liked your story ❤️</span>
+                    ) : n.type === 'broadcast' ? (
+                      <span className="text-amber-400 font-medium">{n.title ? `${n.title}: ` : ''}{n.text}</span>
                     ) : (
                       n.text || 'Sent a message'
                     )}

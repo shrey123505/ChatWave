@@ -21,7 +21,8 @@ import {
   Lock, 
   Sparkles, 
   Phone,
-  Bell
+  Bell,
+  Crown
 } from 'lucide-react';
 import SettingsModal from '../settings/SettingsModal';
 import ProfileModal from '../profile/ProfileModal';
@@ -29,6 +30,7 @@ import QRScannerModal from '../settings/QRScannerModal';
 import CallModal from '../call/CallModal';
 import IncomingCallModal from '../call/IncomingCallModal';
 import NotificationModal from '../notifications/NotificationModal';
+import AdminDashboardModal from '../admin/AdminDashboardModal';
 import Sidebar from './Sidebar';
 import ChatRoom from './ChatRoom';
 import MobileBottomNav, { type MobileTab } from './MobileBottomNav';
@@ -39,15 +41,18 @@ import { usePresence } from '../../hooks/usePresence';
 import { useGlobalNotifications } from '../../hooks/useGlobalNotifications';
 import { showSystemNotification } from '../../utils/notification';
 import { useAuthStore } from '../../store/useAuthStore';
+import { isAdmin } from '../../utils/admin';
 import { Toaster, toast } from 'react-hot-toast';
 
 export default function ChatLayout() {
-  const { user } = useAuthStore();
+  const { user, userProfile } = useAuthStore();
+  const isUserAdmin = isAdmin(userProfile, user);
   usePresence();
   
   // Navigation & Modal States
   const [mobileTab, setMobileTab] = useState<MobileTab>('chats');
   const [showSettings, setShowSettings] = useState(false);
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [showMyProfileModal, setShowMyProfileModal] = useState(false);
   const [viewingProfileUser, setViewingProfileUser] = useState<any | null>(null);
   const [showScanner, setShowScanner] = useState(false);
@@ -226,6 +231,16 @@ export default function ChatLayout() {
             <MessageSquare size={24} /> ChatWave
           </h2>
           <div className="flex items-center gap-1.5">
+            {isUserAdmin && (
+              <button 
+                onClick={() => setShowAdminDashboard(true)} 
+                className="py-1 px-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-400/40 text-amber-300 hover:bg-amber-500/30 text-xs font-bold shadow-md shadow-amber-500/10 transition-all flex items-center gap-1.5 active:scale-95"
+                title="Admin Command Center"
+              >
+                <Crown size={15} className="text-amber-400 fill-amber-400/20" />
+                <span className="hidden lg:inline">Admin</span>
+              </button>
+            )}
             <button 
               onClick={() => setShowScanner(true)} 
               className="p-2 rounded-full hover:bg-white/10 text-text-secondary hover:text-white transition-colors" 
@@ -371,6 +386,15 @@ export default function ChatLayout() {
                     <MessageSquare size={22} /> ChatWave
                   </h2>
                   <div className="flex items-center gap-1">
+                    {isUserAdmin && (
+                      <button 
+                        onClick={() => setShowAdminDashboard(true)} 
+                        className="p-2 rounded-full bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 border border-amber-400/40 transition-colors" 
+                        title="Admin Command Center"
+                      >
+                        <Crown size={18} className="fill-amber-400/20" />
+                      </button>
+                    )}
                     <button 
                       onClick={() => setShowNotifications(true)} 
                       className="relative p-2 rounded-full hover:bg-white/10 text-text-secondary hover:text-white transition-colors" 
@@ -482,7 +506,17 @@ export default function ChatLayout() {
       )}
 
       {/* Settings Modal */}
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showSettings && (
+        <SettingsModal 
+          onClose={() => setShowSettings(false)} 
+          onOpenAdmin={() => setShowAdminDashboard(true)}
+        />
+      )}
+
+      {/* Admin Command Center Modal */}
+      {showAdminDashboard && (
+        <AdminDashboardModal onClose={() => setShowAdminDashboard(false)} />
+      )}
       
       {/* Desktop Own Profile Modal */}
       {showMyProfileModal && (
