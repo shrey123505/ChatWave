@@ -1,0 +1,21 @@
+/* ChatWave Custom Micro-Animations & Responsive Helpers */
+
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.03);
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Video Call Mirror & Orientation Utilities */
+.video-mirror {
+  transform: scaleX(-1);
+}
